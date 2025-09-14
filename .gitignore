@@ -1,0 +1,21 @@
+# Python virtual environment
+venv/
+/venv/
+
+# IDE-specific files (PyCharm, VSCode)
+.idea/
+.vscode/
+
+# Python bytecode and cache
+__pycache__/
+*.pyc
+
+# Instance folder - contains the database and other non-versioned files
+/instance/
+
+# Environment variables file - contains secrets!
+.env
+
+# OS-specific files
+.DS_Store
+Thumbs.db

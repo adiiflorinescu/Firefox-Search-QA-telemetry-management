@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metric Reports - Dashboard</title>
+    <style>
+        /* Using the same consistent styling from other pages */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1, h2 { color: #1a2b4d; }
+        h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; }
+        h2 { margin-top: 2rem; }
+        nav { margin-bottom: 2rem; }
+        nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
+        nav a.active { border-bottom: 2px solid #2c5282; }
+        .hidden { display: none; }
+
+        /* MODIFIED: Search container with dropdown on the right */
+        .search-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            align-items: center;
+        }
+        .search-container input[type="search"] {
+            flex-grow: 1;
+        }
+
+        /* NEW: Shared class for form controls for consistent styling */
+        .form-control {
+            padding: 12px;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: white;
+            box-sizing: border-box; /* Ensures padding doesn't affect final width */
+        }
+
+        /* NEW: Styles for the breakdown section */
+        .breakdown-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+        .stat-card {
+            background-color: #f9fafb;
+            border: 1px solid #eef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .stat-card .stat-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #555;
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+        }
+        .stat-card .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #1a2b4d;
+            margin: 0;
+        }
+
+        /* Styles for the report table */
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 12px; text-align: left; border: 1px solid #eef; vertical-align: top; }
+        th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
+        tr:hover { background-color: #f7f9fc; }
+
+        .metric-type-badge {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            text-align: center;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            font-size: 0.8rem;
+            margin-right: 8px;
+        }
+        .glean-badge { background-color: #38a169; }
+        .legacy-badge { background-color: #718096; }
+
+        .col-metric-name { word-break: break-all; }
+        .col-count { width: 100px; text-align: center; }
+        .col-details { width: 120px; text-align: center; }
+
+        .details-summary {
+            cursor: pointer;
+            color: #2c5282;
+            font-weight: bold;
+        }
+        .tcid-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin-top: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .tcid-list li {
+            padding: 2px 0;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <nav>
+        <a href="{{ url_for('index') }}" id="nav-data-management" class="hidden">Data Management</a>
+        <a href="{{ url_for('metrics') }}">View Metrics</a>
+        <a href="{{ url_for('reports') }}" class="active">Metric Reports</a>
+    </nav>
+
+    <h1>Metric Reports</h1>
+
+    <!-- NEW: General Breakdown Section -->
+    <h2>General Breakdown</h2>
+    <div class="breakdown-grid">
+        <div class="stat-card">
+            <p class="stat-title">Glean Metrics</p>
+            <p class="stat-number">{{ total_glean_metrics }}</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-title">Glean Metrics Covered</p>
+            <p class="stat-number">{{ glean_covered_tcs }}</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-title">Legacy Metrics</p>
+            <p class="stat-number">{{ total_legacy_metrics }}</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-title">Legacy Metrics Covered</p>
+            <p class="stat-number">{{ legacy_covered_tcs }}</p>
+        </div>
+    </div>
+
+
+    <!-- MODIFIED: Search Section with Dropdown on the right -->
+    <h2>Metric Coverage Details</h2>
+    <div class="search-container">
+        <input type="search" id="search-field" list="suggestions-all" placeholder="Search for metrics..." class="form-control">
+        <datalist id="suggestions-all"></datalist>
+        <select id="type-filter" class="form-control">
+            <option value="all" selected>All</option>
+            <option value="glean">Glean</option>
+            <option value="legacy">Legacy</option>
+        </select>
+    </div>
+
+    <!-- Report Table -->
+    <table id="report-table">
+        <thead>
+            <tr>
+                <th class="col-metric-name">Metric Name</th>
+                <th class="col-count">TCID Count</th>
+                <th class="col-details">Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in report_data %}
+            <tr data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
+                <td class="col-metric-name">
+                    <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
+                    {{ row.metric_name }}
+                </td>
+                <td class="col-count">{{ row.tcid_count }}</td>
+                <td class="col-details">
+                    {% set tcids = metric_to_tcids.get(row.metric_name, []) %}
+                    {% if tcids %}
+                    <details>
+                        <summary class="details-summary">Show TCIDs</summary>
+                        <ul class="tcid-list">
+                            <!-- MODIFIED: Loop through (id, title) tuple and add title attribute -->
+                            {% for tcid, tcid_title in tcids %}
+                            <li><a href="{{ tc_base_url }}{{ tcid }}" target="_blank" title="{{ tcid_title or 'No title' }}">{{ tcid }}</a></li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                    {% else %}
+                    <span>-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Keyboard shortcut to show/hide Data Management tab ---
+        document.addEventListener('keydown', function(event) {
+            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
+                event.preventDefault();
+                document.getElementById('nav-data-management').classList.toggle('hidden');
+            }
+        });
+
+        // --- Datalist suggestions for the search bar ---
+        function fetchSuggestions(type, datalistId) {
+            fetch(`/search-suggestions?type=${type}`)
+                .then(response => response.json())
+                .then(data => {
+                    const datalist = document.getElementById(datalistId);
+                    if (!datalist) return;
+                    datalist.innerHTML = '';
+                    data.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item;
+                        datalist.appendChild(option);
+                    });
+                });
+        }
+        fetchSuggestions('all', 'suggestions-all');
+
+        // --- NEW: Enhanced filter function for reports page ---
+        const searchField = document.getElementById('search-field');
+        const typeFilter = document.getElementById('type-filter');
+        const reportRows = document.querySelectorAll('#report-table tbody tr');
+
+        function filterReport() {
+            const searchTerm = searchField.value.toLowerCase();
+            const selectedType = typeFilter.value;
+
+            reportRows.forEach(row => {
+                const metricName = row.dataset.metricName.toLowerCase();
+                const metricType = row.dataset.metricType;
+
+                const matchesSearch = metricName.includes(searchTerm);
+                const matchesType = (selectedType === 'all') || (metricType === selectedType);
+
+                row.classList.toggle('hidden', !(matchesSearch && matchesType));
+            });
+        }
+
+        searchField.addEventListener('input', filterReport);
+        typeFilter.addEventListener('change', filterReport);
+    });
+</script>
+
+</body>
+</html>

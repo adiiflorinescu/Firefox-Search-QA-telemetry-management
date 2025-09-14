@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Data - Dashboard</title>
+    <style>
+        /* Styles are largely the same, kept for consistency */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1, h2, h3 { color: #1a2b4d; }
+        h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; }
+        /* MODIFIED: Smaller section headers */
+        h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+        nav { margin-bottom: 2rem; }
+        nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
+        nav a.active { border-bottom: 2px solid #2c5282; }
+        details { border: 1px solid #ddd; border-radius: 5px; margin-bottom: 1rem; }
+        summary { font-weight: bold; font-size: 1.2rem; padding: 1rem; cursor: pointer; background-color: #f9fafb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 12px; text-align: left; border: 1px solid #eef; word-wrap: break-word; }
+        th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
+        tr:hover { background-color: #f7f9fc; }
+        .col-main-id { white-space: nowrap; }
+
+        /* MODIFIED: More compact form sections */
+        .form-section {
+            padding: 1rem; /* Reduced padding */
+            border: 1px solid #eef;
+            border-radius: 5px;
+            background: #fdfdff;
+        }
+        /* NEW: Grid layout for side-by-side forms */
+        .form-grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem; /* MODIFIED: Reduced gap */
+            padding: 0.5rem 1rem 1rem 1rem; /* MODIFIED: Reduced padding */
+        }
+        /* MODIFIED: More compact form elements */
+        label { font-size: 0.9rem; font-weight: 600; }
+        input[type="text"], textarea, input[type="file"] {
+            width: 100%;
+            padding: 8px; /* Reduced padding */
+            font-size: 0.95rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            margin-top: 0.25rem;
+            margin-bottom: 0.5rem; /* MODIFIED: Reduced margin */
+        }
+        /* NEW: Compact paragraph style for forms */
+        .form-section p {
+            font-size: 0.85rem;
+            margin: 0 0 0.5rem 0;
+            color: #555;
+        }
+        button { background-color: #2c5282; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
+        button:hover { background-color: #1a365d; }
+        .hidden { display: none; }
+        .flash-message { padding: 1rem; margin-bottom: 1rem; border-radius: 5px; color: white; }
+        .flash-success { background-color: #2f855a; }
+        .flash-error { background-color: #c53030; }
+        .upload-results { border: 1px solid #ccc; border-radius: 5px; padding: 1rem; margin-top: 1rem; background-color: #f9f9f9; }
+        .upload-results h4 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        .upload-results .success { color: #2f855a; }
+        .upload-results .errors { color: #c53030; }
+        .upload-results ul { padding-left: 20px; max-height: 150px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <nav>
+        <!-- MODIFIED: Data Management tab is now hidden by default -->
+        <a href="{{ url_for('index') }}" id="nav-data-management" class="active hidden">Data Management</a>
+        <a href="{{ url_for('metrics') }}">View Metrics</a>
+        <a href="{{ url_for('reports') }}">Metric Reports</a>
+    </nav>
+
+    <h1>Data Management</h1>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash-message flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Manage Coverage Section -->
+    <details id="manage-coverage-details">
+        <summary>Manage Coverage</summary>
+        <!-- MODIFIED: Wrapped forms in a grid container -->
+        <div class="form-grid-container">
+            <div class="form-section">
+                <h3>Create New Coverage Entry</h3>
+                <form action="{{ url_for('add_coverage') }}" method="post">
+                    <label for="tc_id">Test Case ID</label>
+                    <input type="text" id="tc_id" name="tc_id" required>
+                    <label for="tcid_title">TCID Title (Optional)</label>
+                    <input type="text" id="tcid_title" name="tcid_title">
+
+                    <!-- MODIFIED: Changed to a textarea for multiple metrics -->
+                    <label for="metrics">Associated Metrics (comma-separated)</label>
+                    <textarea id="metrics" name="metrics" rows="3" required placeholder="e.g., glean.app.startup.time, LEGACY_METRIC_NAME, ..."></textarea>
+                    <datalist id="suggestions-metrics"></datalist>
+
+                    <button type="submit">Add Entry</button>
+                </form>
+            </div>
+            <div class="form-section">
+                <h3>Upload Coverage from CSV</h3>
+                <!-- MODIFIED: Updated CSV column info -->
+                <p>Upload a CSV file with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>.</p>
+                <p>The 'metrics' column should contain one or more probe names, separated by commas.</p>
+                <form action="{{ url_for('upload_coverage_csv') }}" method="post" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".csv" required>
+                    <button type="submit">Upload CSV</button>
+                </form>
+            </div>
+        </div>
+        <div id="coverage-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
+    </details>
+
+    <!-- Manage Glean Metrics -->
+    <details id="manage-glean-details">
+        <summary>Manage Glean Metrics</summary>
+        <div class="form-grid-container">
+            <div class="form-section">
+                <h3>Add New Glean Metric</h3>
+                <form action="{{ url_for('add_glean_metric') }}" method="post">
+                    <label for="glean_name">Glean Name</label>
+                    <input type="text" id="glean_name" name="glean_name" required>
+                    <label for="metric_type">Metric Type</label>
+                    <input type="text" id="metric_type" name="metric_type" required>
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" rows="3"></textarea>
+                    <button type="submit">Add Glean Metric</button>
+                </form>
+            </div>
+            <div class="form-section">
+                <h3>Upload Glean Metrics from CSV</h3>
+                <p>Upload a CSV with columns: <code>glean_name</code>, <code>metric_type</code>, etc.</p>
+                <form action="{{ url_for('upload_glean_csv') }}" method="post" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".csv" required>
+                    <button type="submit">Upload Glean CSV</button>
+                </form>
+            </div>
+        </div>
+        <div id="glean-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
+    </details>
+
+    <!-- Manage Legacy Metrics -->
+    <details id="manage-legacy-details">
+        <summary>Manage Legacy Metrics</summary>
+        <div class="form-grid-container">
+            <div class="form-section">
+                <h3>Add New Legacy Metric</h3>
+                <form action="{{ url_for('add_legacy_metric') }}" method="post">
+                    <label for="legacy_name">Legacy Name</label>
+                    <input type="text" id="legacy_name" name="legacy_name" required>
+                    <label for="metric_type_legacy">Metric Type</label>
+                    <input type="text" id="metric_type_legacy" name="metric_type" required>
+                    <label for="description_legacy">Description</label>
+                    <textarea id="description_legacy" name="description" rows="3"></textarea>
+                    <button type="submit">Add Legacy Metric</button>
+                </form>
+            </div>
+            <div class="form-section">
+                <h3>Upload Legacy Metrics from CSV</h3>
+                <p>Upload a CSV with columns: <code>legacy_name</code>, <code>metric_type</code>, etc.</p>
+                <form action="{{ url_for('upload_legacy_csv') }}" method="post" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".csv" required>
+                    <button type="submit">Upload Legacy CSV</button>
+                </form>
+            </div>
+        </div>
+        <div id="legacy-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
+    </details>
+
+    <!-- NEW: Section for extracting probes -->
+    <details id="extract-probes-details">
+        <summary>Extract Probes from Test Cases</summary>
+        <div class="form-section" style="padding: 1rem 1rem 1.5rem;">
+            <h3>Upload Test Case CSV to Extract Probes</h3>
+            <p>Upload a CSV file (e.g., <code>extract_data.csv</code>) with columns: <code>ID</code>, <code>Title</code>, <code>Steps</code>, and <code>Steps (Expected Result)</code>.</p>
+            <p>The tool will find all telemetry probes and return a new CSV with a "Found Probes" column appended.</p>
+            <form action="{{ url_for('extract_probes') }}" method="post" enctype="multipart/form-data">
+                <input type="file" name="file" accept=".csv" required>
+                <button type="submit">Extract Probes</button>
+            </form>
+        </div>
+    </details>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Datalist suggestions
+        function fetchSuggestions(type, datalistId) {
+            fetch(`/search-suggestions?type=${type}`)
+                .then(response => response.json())
+                .then(data => {
+                    const datalist = document.getElementById(datalistId);
+                    if (!datalist) return;
+                    datalist.innerHTML = '';
+                    data.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item;
+                        datalist.appendChild(option);
+                    });
+                });
+        }
+        // Fetch all metrics for the new metrics input
+        fetchSuggestions('metrics', 'suggestions-metrics');
+
+        // Generic function to display upload results
+        function displayUploadResults(results, containerId, detailsId) {
+            if (!results) return;
+
+            const container = document.getElementById(containerId);
+            const details = document.getElementById(detailsId);
+            if (!container || !details) return;
+
+            let content = `<h4>CSV Import Results</h4>`;
+            content += `<p class="success"><strong>Successfully Imported:</strong> ${results.inserted} rows</p>`;
+
+            if (results.skipped && results.skipped.length > 0) {
+                content += `<p class="errors"><strong>Skipped:</strong> ${results.skipped.length} rows</p><ul>`;
+                results.skipped.forEach(errorMsg => {
+                    content += `<li>${errorMsg}</li>`;
+                });
+                content += `</ul>`;
+            }
+
+            container.innerHTML = content;
+            container.classList.remove('hidden');
+            details.open = true;
+            container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Display results for all three possible upload types
+        displayUploadResults({{ coverage_upload_results | tojson }}, 'coverage-upload-results-container', 'manage-coverage-details');
+        displayUploadResults({{ glean_upload_results | tojson }}, 'glean-upload-results-container', 'manage-glean-details');
+        displayUploadResults({{ legacy_upload_results | tojson }}, 'legacy-upload-results-container', 'manage-legacy-details');
+
+        // --- Scroll to section on expand ---
+        document.querySelectorAll('details').forEach((detailsElement) => {
+            detailsElement.addEventListener('toggle', (event) => {
+                // Only scroll into view if the section was just opened
+                if (detailsElement.open) {
+                    // A small timeout can help ensure the browser has time to render the content
+                    // before scrolling, preventing jitter.
+                    setTimeout(() => {
+                        detailsElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                }
+            });
+        });
+
+        // --- Keyboard shortcut to show/hide Data Management tab ---
+        document.addEventListener('keydown', function(event) {
+            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
+                event.preventDefault();
+                document.getElementById('nav-data-management').classList.toggle('hidden');
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
