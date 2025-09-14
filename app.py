@@ -133,9 +133,15 @@ def process_csv_upload(file, table_name, columns, redirect_url):
     return redirect(redirect_url)
 
 
-# --- Management Page Route ---
-
+# --- NEW: Root URL Route ---
 @app.route('/')
+def home():
+    """Redirects the base URL to the main metrics view page."""
+    return redirect(url_for('metrics'))
+
+
+# --- Management Page Route ---
+@app.route('/manage')
 def index():
     """Renders the main data management page."""
     # Pop all possible result keys from the session
