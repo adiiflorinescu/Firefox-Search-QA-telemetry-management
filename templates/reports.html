@@ -106,13 +106,18 @@
             padding: 2px 0;
             font-size: 0.9em;
         }
+        /* NEW: Style for region/engine info in list */
+        .tcid-list .context {
+            font-size: 0.9em;
+            color: #555;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
     <nav>
-        <!-- MODIFIED: Visibility is now controlled by the 'show_management' variable -->
         <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
         <a href="{{ url_for('metrics') }}">View Metrics</a>
         <a href="{{ url_for('reports') }}" class="active">Metric Reports</a>
@@ -120,7 +125,6 @@
 
     <h1>Metric Reports</h1>
 
-    <!-- MODIFIED: General Breakdown Section with new labels -->
     <h2>General Breakdown</h2>
     <div class="breakdown-grid">
         <div class="stat-card">
@@ -142,7 +146,6 @@
     </div>
 
 
-    <!-- MODIFIED: Search Section with Dropdown on the right -->
     <h2>Metric Coverage Details</h2>
     <div class="search-container">
         <input type="search" id="search-field" list="suggestions-all" placeholder="Search for metrics..." class="form-control">
@@ -154,7 +157,6 @@
         </select>
     </div>
 
-    <!-- Report Table -->
     <table id="report-table">
         <thead>
             <tr>
@@ -177,9 +179,16 @@
                     <details>
                         <summary class="details-summary">Show TCIDs</summary>
                         <ul class="tcid-list">
-                            <!-- MODIFIED: Loop through (id, title) tuple and add title attribute -->
-                            {% for tcid, tcid_title in tcids %}
-                            <li><a href="{{ tc_base_url }}{{ tcid }}" target="_blank" title="{{ tcid_title or 'No title' }}">{{ tcid }}</a></li>
+                            <!-- MODIFIED: Loop through tuple with region/engine and display them -->
+                            {% for tcid, tcid_title, region, engine in tcids %}
+                            <li>
+                                <a href="{{ tc_base_url }}{{ tcid }}" target="_blank" title="{{ tcid_title or 'No title' }}">{{ tcid }}</a>
+                                <span class="context">
+                                    {% if region or engine %}
+                                        ({{ [region, engine] | select('ne', none) | join('/') }})
+                                    {% endif %}
+                                </span>
+                            </li>
                             {% endfor %}
                         </ul>
                     </details>
@@ -196,7 +205,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- Datalist suggestions for the search bar ---
         function fetchSuggestions(type, datalistId) {
             fetch(`/search-suggestions?type=${type}`)
                 .then(response => response.json())
@@ -213,7 +221,6 @@
         }
         fetchSuggestions('all', 'suggestions-all');
 
-        // --- NEW: Enhanced filter function for reports page ---
         const searchField = document.getElementById('search-field');
         const typeFilter = document.getElementById('type-filter');
         const reportRows = document.querySelectorAll('#report-table tbody tr');
@@ -236,12 +243,9 @@
         searchField.addEventListener('input', filterReport);
         typeFilter.addEventListener('change', filterReport);
 
-        // --- Handle keyboard shortcuts ---
         document.addEventListener('keydown', function(event) {
-            // MODIFIED: Keyboard shortcut now calls the backend to update the session
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
                 event.preventDefault();
-                // Call the backend to toggle the session variable
                 fetch("{{ url_for('toggle_management_view') }}", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
@@ -249,7 +253,6 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Reload the page to apply the new session state everywhere
                         window.location.reload();
                     }
                 });

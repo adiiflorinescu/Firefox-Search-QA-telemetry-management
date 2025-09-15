@@ -107,14 +107,18 @@
                     <label for="tcid_title">TCID Title (Optional)</label>
                     <input type="text" id="tcid_title" name="tcid_title">
 
-                    <!-- MODIFIED: Added radio buttons for metric type -->
+                    <!-- MODIFIED: Added Region and Engine fields -->
+                    <label for="region">Region (Optional)</label>
+                    <input type="text" id="region" name="region" placeholder="e.g., US, DE">
+                    <label for="engine">Engine (Optional)</label>
+                    <input type="text" id="engine" name="engine" placeholder="e.g., Google, Bing">
+
                     <label>Metric Type</label>
                     <div class="radio-group">
                         <label><input type="radio" name="metric_type" value="glean" checked> Glean</label>
                         <label><input type="radio" name="metric_type" value="legacy"> Legacy</label>
                     </div>
 
-                    <!-- MODIFIED: Reverted to a textarea for multiple metrics -->
                     <label for="metrics">Associated Metrics (comma-separated)</label>
                     <textarea id="metrics" name="metrics" rows="3" required placeholder="e.g., glean.app.startup.time, glean.another.metric, ..."></textarea>
                     <datalist id="suggestions-metrics"></datalist>
@@ -125,11 +129,9 @@
             <div class="form-section">
                 <h3>Upload Coverage from CSV</h3>
                 <form action="{{ url_for('upload_coverage_csv') }}" method="post" enctype="multipart/form-data">
-                    <!-- MODIFIED: Updated instructions for the new column -->
-                    <p>Upload a CSV with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>, <code>metric_type</code>.</p>
-                    <p>The 'metric_type' column must contain either 'glean' or 'legacy' for each row.</p>
-
-                    <!-- MODIFIED: Removed the radio buttons from the CSV upload form -->
+                    <!-- MODIFIED: Updated instructions for the new columns -->
+                    <p>Upload a CSV with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>, <code>metric_type</code>, <code>region</code>, <code>engine</code>.</p>
+                    <p>The 'metric_type' column must contain 'glean' or 'legacy'.</p>
 
                     <input type="file" name="file" accept=".csv" required>
                     <button type="submit">Upload Validated CSV</button>
@@ -138,6 +140,8 @@
         </div>
         <div id="coverage-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
     </details>
+
+    <!-- ... (rest of the file is unchanged) ... -->
 
     <!-- Manage Glean Metrics -->
     <details id="manage-glean-details">
@@ -255,7 +259,6 @@
             // Ensure the parent <details> element is open.
             details.open = true;
 
-            // --- THIS IS THE FIX ---
             // Use a small timeout to ensure the browser has finished its own rendering/scrolling
             // before we command it to scroll to our results.
             setTimeout(() => {

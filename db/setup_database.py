@@ -41,7 +41,7 @@ def create_tables(cursor):
         updated_at DATETIME DEFAULT (datetime('now'))
     );
     """
-    # MODIFIED: The coverage table no longer stores metric names directly.
+    # The coverage table stores the unique TCID and its title.
     sql_create_coverage_table = """
     CREATE TABLE coverage (
         coverage_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,23 +53,23 @@ def create_tables(cursor):
     );
     """
 
-    # NEW: A junction table to create a many-to-many relationship
-    # between coverage (TCIDs) and metrics.
+    # MODIFIED: The link table now includes region and engine, and a more specific UNIQUE constraint.
     sql_create_link_table = """
     CREATE TABLE coverage_to_metric_link (
         link_id INTEGER PRIMARY KEY AUTOINCREMENT,
         coverage_id INTEGER NOT NULL,
         metric_name TEXT NOT NULL,
-        FOREIGN KEY (coverage_id) REFERENCES coverage (coverage_id) ON DELETE CASCADE
-        -- Note: We can't have a direct FOREIGN KEY to two tables (glean/legacy),
-        -- so this link is maintained by application logic.
+        region TEXT,
+        engine TEXT,
+        FOREIGN KEY (coverage_id) REFERENCES coverage (coverage_id) ON DELETE CASCADE,
+        UNIQUE(coverage_id, metric_name, region, engine)
     );
     """
 
     cursor.execute(sql_create_glean_table)
     cursor.execute(sql_create_legacy_table)
     cursor.execute(sql_create_coverage_table)
-    cursor.execute(sql_create_link_table) # NEW
+    cursor.execute(sql_create_link_table)
 
 
 def create_triggers(cursor):
