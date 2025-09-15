@@ -38,7 +38,7 @@
             padding: 0.5rem 1rem 1rem 1rem; /* MODIFIED: Reduced padding */
         }
         /* MODIFIED: More compact form elements */
-        label { font-size: 0.9rem; font-weight: 600; }
+        label { font-size: 0.9rem; font-weight: 600; display: block; margin-bottom: 0.25rem; }
         input[type="text"], textarea, input[type="file"] {
             width: 100%;
             padding: 8px; /* Reduced padding */
@@ -46,9 +46,14 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             box-sizing: border-box;
-            margin-top: 0.25rem;
-            margin-bottom: 0.5rem; /* MODIFIED: Reduced margin */
+            margin-top: 0;
+            margin-bottom: 0.75rem; /* MODIFIED: Increased margin slightly */
         }
+        /* NEW: Styles for radio buttons */
+        .radio-group { margin-bottom: 0.75rem; }
+        .radio-group label { display: inline-block; margin-right: 1rem; font-weight: normal; }
+        .radio-group input[type="radio"] { margin-right: 0.25rem; }
+
         /* NEW: Compact paragraph style for forms */
         .form-section p {
             font-size: 0.85rem;
@@ -72,8 +77,8 @@
 
 <div class="container">
     <nav>
-        <!-- MODIFIED: Data Management tab is now hidden by default -->
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="active hidden">Data Management</a>
+        <!-- MODIFIED: Visibility is now controlled by the 'show_management' variable -->
+        <a href="{{ url_for('index') }}" id="nav-data-management" class="active {% if not show_management %}hidden{% endif %}">Data Management</a>
         <a href="{{ url_for('metrics') }}">View Metrics</a>
         <a href="{{ url_for('reports') }}">Metric Reports</a>
     </nav>
@@ -102,22 +107,32 @@
                     <label for="tcid_title">TCID Title (Optional)</label>
                     <input type="text" id="tcid_title" name="tcid_title">
 
-                    <!-- MODIFIED: Changed to a textarea for multiple metrics -->
+                    <!-- MODIFIED: Added radio buttons for metric type -->
+                    <label>Metric Type</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="metric_type" value="glean" checked> Glean</label>
+                        <label><input type="radio" name="metric_type" value="legacy"> Legacy</label>
+                    </div>
+
+                    <!-- MODIFIED: Reverted to a textarea for multiple metrics -->
                     <label for="metrics">Associated Metrics (comma-separated)</label>
-                    <textarea id="metrics" name="metrics" rows="3" required placeholder="e.g., glean.app.startup.time, LEGACY_METRIC_NAME, ..."></textarea>
+                    <textarea id="metrics" name="metrics" rows="3" required placeholder="e.g., glean.app.startup.time, glean.another.metric, ..."></textarea>
                     <datalist id="suggestions-metrics"></datalist>
 
-                    <button type="submit">Add Entry</button>
+                    <button type="submit">Add Validated Entry</button>
                 </form>
             </div>
             <div class="form-section">
                 <h3>Upload Coverage from CSV</h3>
-                <!-- MODIFIED: Updated CSV column info -->
-                <p>Upload a CSV file with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>.</p>
-                <p>The 'metrics' column should contain one or more probe names, separated by commas.</p>
                 <form action="{{ url_for('upload_coverage_csv') }}" method="post" enctype="multipart/form-data">
+                    <!-- MODIFIED: Updated instructions for the new column -->
+                    <p>Upload a CSV with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>, <code>metric_type</code>.</p>
+                    <p>The 'metric_type' column must contain either 'glean' or 'legacy' for each row.</p>
+
+                    <!-- MODIFIED: Removed the radio buttons from the CSV upload form -->
+
                     <input type="file" name="file" accept=".csv" required>
-                    <button type="submit">Upload CSV</button>
+                    <button type="submit">Upload Validated CSV</button>
                 </form>
             </div>
         </div>
@@ -133,16 +148,16 @@
                 <form action="{{ url_for('add_glean_metric') }}" method="post">
                     <label for="glean_name">Glean Name</label>
                     <input type="text" id="glean_name" name="glean_name" required>
-                    <label for="metric_type">Metric Type</label>
-                    <input type="text" id="metric_type" name="metric_type" required>
-                    <label for="description">Description</label>
+                    <label for="metric_type">Metric Type (Optional)</label>
+                    <input type="text" id="metric_type" name="metric_type">
+                    <label for="description">Description (Optional)</label>
                     <textarea id="description" name="description" rows="3"></textarea>
                     <button type="submit">Add Glean Metric</button>
                 </form>
             </div>
             <div class="form-section">
                 <h3>Upload Glean Metrics from CSV</h3>
-                <p>Upload a CSV with columns: <code>glean_name</code>, <code>metric_type</code>, etc.</p>
+                <p>Upload a CSV with columns: <code>glean_name</code>, <code>metric_type</code>, <code>expiration</code>, <code>description</code>, <code>search_metric</code>, <code>legacy_correspondent</code>.</p>
                 <form action="{{ url_for('upload_glean_csv') }}" method="post" enctype="multipart/form-data">
                     <input type="file" name="file" accept=".csv" required>
                     <button type="submit">Upload Glean CSV</button>
@@ -161,16 +176,16 @@
                 <form action="{{ url_for('add_legacy_metric') }}" method="post">
                     <label for="legacy_name">Legacy Name</label>
                     <input type="text" id="legacy_name" name="legacy_name" required>
-                    <label for="metric_type_legacy">Metric Type</label>
-                    <input type="text" id="metric_type_legacy" name="metric_type" required>
-                    <label for="description_legacy">Description</label>
+                    <label for="metric_type_legacy">Metric Type (Optional)</label>
+                    <input type="text" id="metric_type_legacy" name="metric_type">
+                    <label for="description_legacy">Description (Optional)</label>
                     <textarea id="description_legacy" name="description" rows="3"></textarea>
                     <button type="submit">Add Legacy Metric</button>
                 </form>
             </div>
             <div class="form-section">
                 <h3>Upload Legacy Metrics from CSV</h3>
-                <p>Upload a CSV with columns: <code>legacy_name</code>, <code>metric_type</code>, etc.</p>
+                <p>Upload a CSV with columns: <code>legacy_name</code>, <code>metric_type</code>, <code>expiration</code>, <code>description</code>, <code>search_metric</code>, <code>glean_correspondent</code>.</p>
                 <form action="{{ url_for('upload_legacy_csv') }}" method="post" enctype="multipart/form-data">
                     <input type="file" name="file" accept=".csv" required>
                     <button type="submit">Upload Legacy CSV</button>
@@ -236,8 +251,16 @@
 
             container.innerHTML = content;
             container.classList.remove('hidden');
+
+            // Ensure the parent <details> element is open.
             details.open = true;
-            container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // --- THIS IS THE FIX ---
+            // Use a small timeout to ensure the browser has finished its own rendering/scrolling
+            // before we command it to scroll to our results.
+            setTimeout(() => {
+                container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100); // A 100ms delay is usually sufficient.
         }
 
         // Display results for all three possible upload types
@@ -259,11 +282,22 @@
             });
         });
 
-        // --- Keyboard shortcut to show/hide Data Management tab ---
+        // --- MODIFIED: Keyboard shortcut now calls the backend to update the session ---
         document.addEventListener('keydown', function(event) {
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
                 event.preventDefault();
-                document.getElementById('nav-data-management').classList.toggle('hidden');
+                // Call the backend to toggle the session variable
+                fetch("{{ url_for('toggle_management_view') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload the page to apply the new session state everywhere
+                        window.location.reload();
+                    }
+                });
             }
         });
     });

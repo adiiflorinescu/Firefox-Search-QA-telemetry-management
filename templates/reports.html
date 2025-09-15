@@ -112,14 +112,15 @@
 
 <div class="container">
     <nav>
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="hidden">Data Management</a>
+        <!-- MODIFIED: Visibility is now controlled by the 'show_management' variable -->
+        <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
         <a href="{{ url_for('metrics') }}">View Metrics</a>
         <a href="{{ url_for('reports') }}" class="active">Metric Reports</a>
     </nav>
 
     <h1>Metric Reports</h1>
 
-    <!-- NEW: General Breakdown Section -->
+    <!-- MODIFIED: General Breakdown Section with new labels -->
     <h2>General Breakdown</h2>
     <div class="breakdown-grid">
         <div class="stat-card">
@@ -127,7 +128,7 @@
             <p class="stat-number">{{ total_glean_metrics }}</p>
         </div>
         <div class="stat-card">
-            <p class="stat-title">Glean Metrics Covered</p>
+            <p class="stat-title">Total Glean Tests</p>
             <p class="stat-number">{{ glean_covered_tcs }}</p>
         </div>
         <div class="stat-card">
@@ -135,7 +136,7 @@
             <p class="stat-number">{{ total_legacy_metrics }}</p>
         </div>
         <div class="stat-card">
-            <p class="stat-title">Legacy Metrics Covered</p>
+            <p class="stat-title">Total Legacy Tests</p>
             <p class="stat-number">{{ legacy_covered_tcs }}</p>
         </div>
     </div>
@@ -195,14 +196,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- Keyboard shortcut to show/hide Data Management tab ---
-        document.addEventListener('keydown', function(event) {
-            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
-                event.preventDefault();
-                document.getElementById('nav-data-management').classList.toggle('hidden');
-            }
-        });
-
         // --- Datalist suggestions for the search bar ---
         function fetchSuggestions(type, datalistId) {
             fetch(`/search-suggestions?type=${type}`)
@@ -242,6 +235,26 @@
 
         searchField.addEventListener('input', filterReport);
         typeFilter.addEventListener('change', filterReport);
+
+        // --- Handle keyboard shortcuts ---
+        document.addEventListener('keydown', function(event) {
+            // MODIFIED: Keyboard shortcut now calls the backend to update the session
+            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
+                event.preventDefault();
+                // Call the backend to toggle the session variable
+                fetch("{{ url_for('toggle_management_view') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload the page to apply the new session state everywhere
+                        window.location.reload();
+                    }
+                });
+            }
+        });
     });
 </script>
 

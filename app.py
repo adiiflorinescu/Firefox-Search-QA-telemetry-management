@@ -41,7 +41,10 @@ def get_db_connection():
 
 # --- Generic CSV Upload Logic ---
 def process_csv_upload(file, table_name, columns, redirect_url):
-    """Generic function to process a CSV file upload and store results in session."""
+    """
+    Generic function to process a CSV file upload and store results in session.
+    MODIFIED: No longer accepts 'metric_type' as a parameter. It's now expected in the CSV for coverage uploads.
+    """
     if not file or file.filename == '':
         flash('No file selected.', 'error')
         return redirect(redirect_url)
@@ -64,7 +67,7 @@ def process_csv_upload(file, table_name, columns, redirect_url):
             with get_db_connection() as conn:
                 cursor = conn.cursor()
 
-                # MODIFIED: Special handling for coverage uploads
+                # MODIFIED: Special handling for coverage uploads with per-row validation
                 if table_name == 'coverage':
                     for i, row in enumerate(csv_reader, 2):
                         if len(row) != len(columns):
@@ -72,46 +75,98 @@ def process_csv_upload(file, table_name, columns, redirect_url):
                                 f"Line {i}: Incorrect column count. Expected {len(columns)}, got {len(row)}.")
                             continue
 
-                        tc_id, tcid_title, metrics_str = (row[0], row[1], row[2])
+                        # MODIFIED: Unpack the new metric_type column
+                        tc_id, tcid_title, metrics_str, metric_type = (row[0], row[1], row[2], row[3].lower().strip())
                         metric_names = [m.strip() for m in metrics_str.split(',') if m.strip()]
 
                         if not tc_id or not metric_names:
                             skipped_rows.append(f"Line {i}: TC ID and at least one metric are required.")
                             continue
 
-                        try:
-                            cursor.execute("SAVEPOINT csv_row;")
-                            # Insert into coverage table
-                            cursor.execute(
-                                "INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
-                                (tc_id, tcid_title or None)
-                            )
-                            coverage_id = cursor.lastrowid
-                            # Insert into link table
-                            for metric in metric_names:
-                                cursor.execute(
-                                    "INSERT INTO coverage_to_metric_link (coverage_id, metric_name) VALUES (?, ?)",
-                                    (coverage_id, metric)
-                                )
-                            cursor.execute("RELEASE SAVEPOINT csv_row;")
-                            inserted_count += 1
-                        except sqlite3.IntegrityError as e:
-                            cursor.execute("ROLLBACK TO SAVEPOINT csv_row;")
-                            skipped_rows.append(f"Line {i} (TCID: {tc_id}): {e}")
-                        except Exception as e:
-                            cursor.execute("ROLLBACK TO SAVEPOINT csv_row;")
-                            skipped_rows.append(f"Line {i} (TCID: {tc_id}): Unexpected error {e}")
-                else:
-                    # Original logic for other tables
-                    placeholders = ', '.join(['?'] * len(columns))
-                    sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders});"
-                    for i, row in enumerate(csv_reader, 2):
-                        if len(row) != len(columns):
+                        if metric_type not in ['glean', 'legacy']:
                             skipped_rows.append(
-                                f"Line {i}: Incorrect column count. Expected {len(columns)}, got {len(row)}.")
+                                f"Line {i} (TCID: {tc_id}): Invalid metric_type '{row[3]}'. Must be 'glean' or 'legacy'.")
                             continue
 
-                        data_tuple = tuple(val.strip() if val and val.strip() else None for val in row)
+                        try:
+                            # --- Metric Existence Validation for this row ---
+                            val_table_name = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
+                            val_column_name = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+                            non_existent_metrics = []
+                            for metric in metric_names:
+                                metric_exists = cursor.execute(
+                                    f"SELECT 1 FROM {val_table_name} WHERE {val_column_name} = ? AND is_deleted = FALSE",
+                                    (metric,)
+                                ).fetchone()
+                                if not metric_exists:
+                                    non_existent_metrics.append(metric)
+
+                            if non_existent_metrics:
+                                skipped_rows.append(
+                                    f"Line {i} (TCID: {tc_id}): Skipped due to non-existent {metric_type} metrics: {', '.join(non_existent_metrics)}")
+                                continue  # Skip this entire row
+
+                            # --- If all metrics are valid, proceed with insertion ---
+                            cursor.execute("SAVEPOINT csv_row;")
+
+                            # Find or create the coverage entry for the TCID
+                            coverage_entry = cursor.execute(
+                                "SELECT coverage_id FROM coverage WHERE tc_id = ? AND is_deleted = FALSE", (tc_id,)
+                            ).fetchone()
+
+                            if coverage_entry:
+                                coverage_id = coverage_entry['coverage_id']
+                                cursor.execute("UPDATE coverage SET tcid_title = ? WHERE coverage_id = ?",
+                                               (tcid_title or None, coverage_id))
+                            else:
+                                cursor.execute(
+                                    "INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
+                                    (tc_id, tcid_title or None)
+                                )
+                                coverage_id = cursor.lastrowid
+
+                            # Insert into link table, avoiding duplicates
+                            for metric in metric_names:
+                                existing_link = cursor.execute(
+                                    "SELECT 1 FROM coverage_to_metric_link WHERE coverage_id = ? AND metric_name = ?",
+                                    (coverage_id, metric)
+                                ).fetchone()
+                                if not existing_link:
+                                    cursor.execute(
+                                        "INSERT INTO coverage_to_metric_link (coverage_id, metric_name) VALUES (?, ?)",
+                                        (coverage_id, metric)
+                                    )
+
+                            cursor.execute("RELEASE SAVEPOINT csv_row;")
+                            inserted_count += 1
+                        except sqlite3.Error as e:
+                            cursor.execute("ROLLBACK TO SAVEPOINT csv_row;")
+                            skipped_rows.append(f"Line {i} (TCID: {tc_id}): Database error - {e}")
+
+                else:
+                    # MODIFIED: Logic for Glean/Legacy uploads to handle optional columns
+                    placeholders = ', '.join(['?'] * len(columns))
+                    sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders});"
+
+                    for i, row in enumerate(csv_reader, 2):
+                        # The first column (the name) is always required.
+                        if not row or not row[0].strip():
+                            skipped_rows.append(f"Line {i}: Skipped because the metric name is missing.")
+                            continue
+
+                        # Pad the row with None values if optional columns are missing
+                        padded_row = (row + [None] * len(columns))[:len(columns)]
+
+                        # --- FIX for NOT NULL constraint ---
+                        # Create a mutable list from the padded row to modify it
+                        row_values = list(padded_row)
+
+                        # If metric_type (at index 1) is missing, provide a default.
+                        if not row_values[1] or not row_values[1].strip():
+                            row_values[1] = 'Uncategorized'  # Default value
+
+                        data_tuple = tuple(val.strip() if val and val.strip() else None for val in row_values)
+
                         try:
                             cursor.execute("SAVEPOINT csv_row;")
                             cursor.execute(sql, data_tuple)
@@ -119,10 +174,10 @@ def process_csv_upload(file, table_name, columns, redirect_url):
                             inserted_count += 1
                         except sqlite3.IntegrityError as e:
                             cursor.execute("ROLLBACK TO SAVEPOINT csv_row;")
-                            skipped_rows.append(f"Line {i}: {e}")
+                            skipped_rows.append(f"Line {i} (Metric: {data_tuple[0]}): {e}")
                         except Exception as e:
                             cursor.execute("ROLLBACK TO SAVEPOINT csv_row;")
-                            skipped_rows.append(f"Line {i}: Unexpected error {e}")
+                            skipped_rows.append(f"Line {i} (Metric: {data_tuple[0]}): Unexpected error {e}")
 
         # Store results in session, keyed by table name for clarity
         session[f'{table_name}_upload_results'] = {'inserted': inserted_count, 'skipped': skipped_rows}
@@ -151,9 +206,12 @@ def index():
 
     return render_template(
         'index.html',
+        # MODIFIED: Pass the coverage results to the template
         coverage_upload_results=coverage_upload_results,
         glean_upload_results=glean_upload_results,
-        legacy_upload_results=legacy_upload_results
+        legacy_upload_results=legacy_upload_results,
+        # Pass session state to the template
+        show_management=session.get('show_management', False)
     )
 
 
@@ -190,7 +248,9 @@ def metrics():
         glean_metrics=glean_metrics,
         legacy_metrics=legacy_metrics,
         coverage=coverage,
-        tc_base_url=config.TC_BASE_URL
+        tc_base_url=config.TC_BASE_URL,
+        # Pass session state to the template
+        show_management=session.get('show_management', False)
     )
 
 
@@ -257,7 +317,9 @@ def reports():
         total_glean_metrics=total_glean_metrics,
         total_legacy_metrics=total_legacy_metrics,
         glean_covered_tcs=glean_covered_tcs,
-        legacy_covered_tcs=legacy_covered_tcs
+        legacy_covered_tcs=legacy_covered_tcs,
+        # Pass session state to the template
+        show_management=session.get('show_management', False)
     )
 
 
@@ -348,17 +410,34 @@ def soft_delete(table_name, pk):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# --- NEW: Route to toggle management view visibility ---
+@app.route('/toggle-management-view', methods=['POST'])
+def toggle_management_view():
+    """Toggles the visibility of the management tab in the session."""
+    session['show_management'] = not session.get('show_management', False)
+    return jsonify({'success': True, 'show_management': session['show_management']})
+
+
 # --- Form Submission Routes ---
 
 @app.route('/coverage/add', methods=['POST'])
 def add_coverage():
-    """Handles the form submission for a new coverage entry with multiple metrics."""
+    """
+    Handles the form submission for a new coverage entry, validating that the
+    associated metrics exist in the corresponding glean or legacy table.
+    """
     tc_id = request.form.get('tc_id')
     tcid_title = request.form.get('tcid_title')
-    metrics_str = request.form.get('metrics')  # Comma-separated string
+    metric_type = request.form.get('metric_type')  # 'glean' or 'legacy'
+    metrics_str = request.form.get('metrics')
 
-    if not tc_id or not metrics_str:
-        flash('TC ID and at least one Metric are required.', 'error')
+    # --- 1. Input Validation ---
+    if not all([tc_id, metric_type, metrics_str]):
+        flash('TC ID, Metric Type, and at least one Metric are required.', 'error')
+        return redirect(url_for('index'))
+
+    if metric_type not in ['glean', 'legacy']:
+        flash('Invalid metric type specified.', 'error')
         return redirect(url_for('index'))
 
     metric_names = [m.strip() for m in metrics_str.split(',') if m.strip()]
@@ -369,36 +448,85 @@ def add_coverage():
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            # Insert into main coverage table first
-            cursor.execute(
-                "INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
-                (tc_id, tcid_title or None)
-            )
-            # Get the ID of the new coverage entry
-            coverage_id = cursor.lastrowid
+            # Use a transaction to ensure all operations succeed or fail together.
+            cursor.execute("BEGIN;")
 
-            # Insert a record into the link table for each metric
+            # --- 2. Metric Existence Validation ---
+            non_existent_metrics = []
+            table_name = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
+            column_name = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+
             for metric in metric_names:
+                metric_exists = cursor.execute(
+                    f"SELECT 1 FROM {table_name} WHERE {column_name} = ? AND is_deleted = FALSE",
+                    (metric,)
+                ).fetchone()
+                if not metric_exists:
+                    non_existent_metrics.append(metric)
+
+            if non_existent_metrics:
+                flash(
+                    f"Error: The following {metric_type} metrics do not exist: {', '.join(non_existent_metrics)}. Please add them first.",
+                    'error')
+                cursor.execute("ROLLBACK;")
+                return redirect(url_for('index'))
+
+            # --- 3. Database Insertion ---
+            # Find or create the coverage entry for the TCID
+            coverage_entry = cursor.execute(
+                "SELECT coverage_id FROM coverage WHERE tc_id = ? AND is_deleted = FALSE", (tc_id,)
+            ).fetchone()
+
+            if coverage_entry:
+                coverage_id = coverage_entry['coverage_id']
+                # Optionally update the title if it has changed
+                cursor.execute("UPDATE coverage SET tcid_title = ? WHERE coverage_id = ?",
+                               (tcid_title or None, coverage_id))
+            else:
+                # Create a new coverage entry if it's the first time we see this TCID
                 cursor.execute(
-                    "INSERT INTO coverage_to_metric_link (coverage_id, metric_name) VALUES (?, ?)",
-                    (coverage_id, metric)
+                    "INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
+                    (tc_id, tcid_title or None)
                 )
-        flash(f"Successfully added coverage for TC ID: {tc_id}", 'success')
+                coverage_id = cursor.lastrowid
+
+            # Insert a record into the link table for each validated metric
+            for metric in metric_names:
+                # Check if this exact TCID -> Metric link already exists to prevent duplicates
+                existing_link = cursor.execute("""
+                    SELECT 1 FROM coverage_to_metric_link
+                    WHERE coverage_id = ? AND metric_name = ?
+                """, (coverage_id, metric)).fetchone()
+
+                if not existing_link:
+                    cursor.execute(
+                        "INSERT INTO coverage_to_metric_link (coverage_id, metric_name) VALUES (?, ?)",
+                        (coverage_id, metric)
+                    )
+
+            cursor.execute("COMMIT;")  # Commit the transaction
+
+        flash(f"Successfully added/updated coverage for TC ID '{tc_id}'.", 'success')
+
     except sqlite3.IntegrityError as e:
-        flash(f"Error: Could not add entry. A TC ID might already exist. (DB: {e})", 'error')
+        cursor.execute("ROLLBACK;")
+        flash(f"Database Error: Could not add entry. (Details: {e})", 'error')
     except Exception as e:
+        cursor.execute("ROLLBACK;")
         flash(f"An unexpected error occurred: {e}", 'error')
+
     return redirect(url_for('index'))
 
 
 @app.route('/coverage/upload', methods=['POST'])
 def upload_coverage_csv():
-    """Handles CSV file upload for bulk coverage creation."""
-    # MODIFIED: Columns are now tc_id, tcid_title, and a comma-separated metrics string
+    """Handles CSV file upload for bulk coverage creation with per-row validation."""
+    # MODIFIED: No longer gets metric_type from the form.
     return process_csv_upload(
         request.files.get('file'),
         'coverage',
-        ['tc_id', 'tcid_title', 'metrics'],
+        # MODIFIED: Expect 4 columns now
+        ['tc_id', 'tcid_title', 'metrics', 'metric_type'],
         url_for('index')
     )
 
@@ -407,12 +535,21 @@ def upload_coverage_csv():
 def add_glean_metric():
     """Adds a single new Glean metric."""
     try:
+        # MODIFIED: Handle optional form fields
+        glean_name = request.form.get('glean_name')
+        metric_type = request.form.get('metric_type') or 'Uncategorized'
+        description = request.form.get('description')
+
+        if not glean_name:
+            flash("Glean Name is a required field.", 'error')
+            return redirect(url_for('index'))
+
         with get_db_connection() as conn:
             conn.execute(
                 "INSERT INTO glean_metrics (glean_name, metric_type, description) VALUES (?, ?, ?)",
-                (request.form['glean_name'], request.form['metric_type'], request.form['description'])
+                (glean_name, metric_type, description)
             )
-        flash(f"Successfully added Glean metric: {request.form['glean_name']}", 'success')
+        flash(f"Successfully added Glean metric: {glean_name}", 'success')
     except sqlite3.IntegrityError as e:
         flash(f"Error adding Glean metric: {e}", 'error')
     return redirect(url_for('index'))
@@ -422,12 +559,21 @@ def add_glean_metric():
 def add_legacy_metric():
     """Adds a single new Legacy metric."""
     try:
+        # MODIFIED: Handle optional form fields
+        legacy_name = request.form.get('legacy_name')
+        metric_type = request.form.get('metric_type') or 'Uncategorized'
+        description = request.form.get('description')
+
+        if not legacy_name:
+            flash("Legacy Name is a required field.", 'error')
+            return redirect(url_for('index'))
+
         with get_db_connection() as conn:
             conn.execute(
                 "INSERT INTO legacy_metrics (legacy_name, metric_type, description) VALUES (?, ?, ?)",
-                (request.form['legacy_name'], request.form['metric_type'], request.form['description'])
+                (legacy_name, metric_type, description)
             )
-        flash(f"Successfully added Legacy metric: {request.form['legacy_name']}", 'success')
+        flash(f"Successfully added Legacy metric: {legacy_name}", 'success')
     except sqlite3.IntegrityError as e:
         flash(f"Error adding Legacy metric: {e}", 'error')
     return redirect(url_for('index'))

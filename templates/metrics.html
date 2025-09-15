@@ -70,8 +70,8 @@
 
 <div class="container">
     <nav>
-        <!-- MODIFIED: Data Management tab is now hidden by default -->
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="hidden">Data Management</a>
+        <!-- MODIFIED: Visibility is now controlled by the 'show_management' variable -->
+        <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
         <a href="{{ url_for('metrics') }}" class="active">View Metrics</a>
         <a href="{{ url_for('reports') }}">Metric Reports</a>
     </nav>
@@ -276,10 +276,21 @@
                 document.getElementById('glean-body').classList.toggle('actions-visible');
                 document.getElementById('legacy-body').classList.toggle('actions-visible');
             }
-            // Check for Ctrl + Shift + Z to toggle Data Management nav link
+            // MODIFIED: Keyboard shortcut now calls the backend to update the session
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
                 event.preventDefault();
-                document.getElementById('nav-data-management').classList.toggle('hidden');
+                // Call the backend to toggle the session variable
+                fetch("{{ url_for('toggle_management_view') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload the page to apply the new session state everywhere
+                        window.location.reload();
+                    }
+                });
             }
         });
     });
