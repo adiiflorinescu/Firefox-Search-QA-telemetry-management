@@ -182,7 +182,7 @@
                             <!-- MODIFIED: Loop through tuple with region/engine and display them -->
                             {% for tcid, tcid_title, region, engine in tcids %}
                             <li>
-                                <a href="{{ tc_base_url }}{{ tcid }}" target="_blank" title="{{ tcid_title or 'No title' }}">{{ tcid }}</a>
+                                <a href="{{ tc_base_url }}{{ tcid | strip_tcid_prefix }}" target="_blank" title="{{ tcid_title or 'No title' }}">{{ tcid }}</a>
                                 <span class="context">
                                     {% if region or engine %}
                                         ({{ [region, engine] | select('ne', none) | join('/') }})

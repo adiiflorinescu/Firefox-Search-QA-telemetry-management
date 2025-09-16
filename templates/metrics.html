@@ -87,30 +87,30 @@
 
     <!-- MODIFIED: Coverage Table with new columns -->
     <details open>
-        <summary>Test Case Coverage</summary>
+        <summary>Test Case Coverage ({{ coverage_count }})</summary>
         <table id="coverage-table">
             <thead>
                 <tr>
                     <th>TC ID</th>
-                    <th>Associated Metrics</th>
+                    <th>Associated Metric</th>
                     <th>Region</th>
                     <th>Engine</th>
                     <th class="col-actions"></th>
                 </tr>
             </thead>
             <tbody id="coverage-body">
+                <!-- MODIFIED: The loop and data attributes are updated for the new query structure -->
                 {% for item in coverage %}
-                <tr data-tcid="{{ item.tc_id }}" data-metrics="{{ item.metrics or '' }}" data-regions="{{ item.regions or '' }}" data-engines="{{ item.engines or '' }}">
-                    <td><a href="{{ tc_base_url }}{{ item.tc_id }}" target="_blank" title="{{ item.tcid_title or 'No title' }}">{{ item.tc_id }}</a></td>
-                    <td>{{ item.metrics or 'N/A' }}</td>
-                    <td>
-                        <span class="tooltip-span" title="{{ item.regions or 'N/A' }}">{{ item.region_count }}</span>
-                    </td>
-                    <td>
-                        <span class="tooltip-span" title="{{ item.engines or 'N/A' }}">{{ item.engine_count }}</span>
-                    </td>
+                <tr data-tcid="{{ item.tc_id }}" data-metric="{{ item.metric_name or '' }}" data-region="{{ item.region or '' }}" data-engine="{{ item.engine or '' }}">
+                    <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank" title="{{ item.tcid_title or 'No title' }}">{{ item.tc_id }}</a></td>
+                    <td>{{ item.metric_name or 'N/A' }}</td>
+                    <td>{{ item.region or 'N/A' }}</td>
+                    <td>{{ item.engine or 'N/A' }}</td>
                     <td class="col-actions">
-                        <button class="delete-btn" data-table="coverage" data-pk="{{ item.coverage_id }}" title="Delete item">❎</button>
+                        <!-- MODIFIED: Delete button now uses the unique link_id -->
+                        {% if item.link_id %}
+                        <button class="delete-btn" data-table="coverage" data-pk="{{ item.link_id }}" title="Delete this specific metric link">❎</button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -120,7 +120,7 @@
 
     <!-- ... (Glean and Legacy tables remain the same) ... -->
     <details open>
-        <summary>Glean Metrics</summary>
+        <summary>Glean Metrics ({{ glean_count }})</summary>
         <table id="glean-table">
             <thead>
                 <tr>
@@ -152,7 +152,7 @@
     </details>
 
     <details open>
-        <summary>Legacy Metrics</summary>
+        <summary>Legacy Metrics ({{ legacy_count }})</summary>
         <table id="legacy-table">
             <thead>
                 <tr>
@@ -221,13 +221,13 @@
                 row.classList.toggle('hidden', !matchesSearch);
             });
 
-            // MODIFIED: Global search now includes region and engine
+            // MODIFIED: Global search now checks the new data attributes
             coverageRows.forEach(row => {
                 const tcid = row.dataset.tcid.toLowerCase();
-                const metrics = row.dataset.metrics.toLowerCase();
-                const regions = row.dataset.regions.toLowerCase();
-                const engines = row.dataset.engines.toLowerCase();
-                const matches = tcid.includes(searchTerm) || metrics.includes(searchTerm) || regions.includes(searchTerm) || engines.includes(searchTerm) || searchTerm === '';
+                const metric = row.dataset.metric.toLowerCase();
+                const region = row.dataset.region.toLowerCase();
+                const engine = row.dataset.engine.toLowerCase();
+                const matches = tcid.includes(searchTerm) || metric.includes(searchTerm) || region.includes(searchTerm) || engine.includes(searchTerm) || searchTerm === '';
                 row.classList.toggle('hidden', !matches);
             });
         }
