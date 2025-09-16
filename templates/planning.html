@@ -109,14 +109,16 @@
                     <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
                     {{ row.metric_name }}
                 </td>
-                <td class="col-count tcid-count-cell">{{ row.tcid_count + metric_to_planned_tcs.get(row.metric_name, [])|length }}</td>
+                {# --- CORRECTED LOOKUP --- #}
+                <td class="col-count tcid-count-cell">{{ row.tcid_count + metric_to_planned_tcs.get((row.metric_name, row.metric_type), [])|length }}</td>
                 <td class="col-count">{{ row.region_count }}</td>
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
+                    {# --- CORRECTED LOOKUP --- #}
                     <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
-                        <option value="-" {% if not metric_to_priority.get(row.metric_name) %}selected{% endif %}>-</option>
+                        <option value="-" {% if not metric_to_priority.get((row.metric_name, row.metric_type)) %}selected{% endif %}>-</option>
                         {% for i in range(1, 6) %}
-                        <option value="P{{i}}" {% if metric_to_priority.get(row.metric_name) == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
+                        <option value="P{{i}}" {% if metric_to_priority.get((row.metric_name, row.metric_type)) == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
                         {% endfor %}
                     </select>
                 </td>
@@ -129,8 +131,8 @@
                                 <tr><th>Engine</th><th>Region</th><th>TC ID</th><th>Actions</th></tr>
                             </thead>
                             <tbody>
-                                {# Existing Entries #}
-                                {% for tc in metric_to_existing_tcs.get(row.metric_name, []) %}
+                                {# --- CORRECTED LOOKUP: Existing Entries --- #}
+                                {% for tc in metric_to_existing_tcs.get((row.metric_name, row.metric_type), []) %}
                                 <tr>
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>
@@ -138,8 +140,8 @@
                                     <td></td>
                                 </tr>
                                 {% endfor %}
-                                {# Planned Entries #}
-                                {% for tc in metric_to_planned_tcs.get(row.metric_name, []) %}
+                                {# --- CORRECTED LOOKUP: Planned Entries --- #}
+                                {% for tc in metric_to_planned_tcs.get((row.metric_name, row.metric_type), []) %}
                                 <tr class="planned-entry" data-planning-id="{{ tc.planning_id }}">
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>

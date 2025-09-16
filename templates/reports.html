@@ -175,7 +175,8 @@
                 </td>
                 <td class="col-count">{{ row.tcid_count }}</td>
                 <td class="col-details">
-                    {% set tcids = metric_to_tcids.get(row.metric_name, []) %}
+                    {# --- CORRECTED LOOKUP --- #}
+                    {% set tcids = metric_to_tcids.get((row.metric_name, row.metric_type), []) %}
                     {% if tcids %}
                     <details>
                         <summary class="details-summary">Show TCIDs</summary>

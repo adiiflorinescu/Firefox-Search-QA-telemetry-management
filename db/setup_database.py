@@ -1,3 +1,5 @@
+# C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/db/setup_database.py
+
 import sqlite3
 import os
 
@@ -53,17 +55,19 @@ def create_tables(cursor):
     );
     """
 
-    # The link table now includes region and engine, and a more specific UNIQUE constraint.
+    # --- CORRECTED SCHEMA ---
+    # The link table now includes metric_type to ensure uniqueness.
     sql_create_link_table = """
     CREATE TABLE coverage_to_metric_link (
         link_id INTEGER PRIMARY KEY AUTOINCREMENT,
         coverage_id INTEGER NOT NULL,
         metric_name TEXT NOT NULL,
+        metric_type TEXT NOT NULL, -- Added metric_type
         region TEXT,
         engine TEXT,
-        is_deleted BOOLEAN DEFAULT FALSE, -- Added is_deleted flag
+        is_deleted BOOLEAN DEFAULT FALSE,
         FOREIGN KEY (coverage_id) REFERENCES coverage (coverage_id) ON DELETE CASCADE,
-        UNIQUE(coverage_id, metric_name, region, engine)
+        UNIQUE(coverage_id, metric_name, metric_type, region, engine) -- Added metric_type to UNIQUE constraint
     );
     """
 
@@ -72,6 +76,7 @@ def create_tables(cursor):
     CREATE TABLE planning (
         planning_id INTEGER PRIMARY KEY AUTOINCREMENT,
         metric_name TEXT NOT NULL,
+        metric_type TEXT, -- Added metric_type to store the context of the plan
         priority TEXT,
         tc_id TEXT,
         region TEXT,
@@ -83,15 +88,17 @@ def create_tables(cursor):
     """
 
     # NEW: Create partial unique indexes separately for wider SQLite version compatibility.
+    # This constraint is now on metric_name AND metric_type
     sql_create_planning_priority_index = """
     CREATE UNIQUE INDEX idx_planning_metric_priority
-    ON planning(metric_name)
+    ON planning(metric_name, metric_type)
     WHERE tc_id IS NULL;
     """
 
+    # This constraint is now on metric_name AND metric_type
     sql_create_planning_tc_index = """
     CREATE UNIQUE INDEX idx_planning_metric_tc
-    ON planning(metric_name, tc_id, region, engine)
+    ON planning(metric_name, metric_type, tc_id, region, engine)
     WHERE tc_id IS NOT NULL;
     """
 
