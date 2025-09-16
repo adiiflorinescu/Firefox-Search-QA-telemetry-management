@@ -61,11 +61,6 @@
             padding-left: 8px;
             padding-right: 8px;
         }
-        /* NEW: Style for tooltip spans */
-        .tooltip-span {
-            cursor: help;
-            border-bottom: 1px dotted #555;
-        }
     </style>
 </head>
 <body>
@@ -103,12 +98,8 @@
                 <tr data-tcid="{{ item.tc_id }}" data-metrics="{{ item.metrics or '' }}" data-regions="{{ item.regions or '' }}" data-engines="{{ item.engines or '' }}">
                     <td><a href="{{ tc_base_url }}{{ item.tc_id }}" target="_blank" title="{{ item.tcid_title or 'No title' }}">{{ item.tc_id }}</a></td>
                     <td>{{ item.metrics or 'N/A' }}</td>
-                    <td>
-                        <span class="tooltip-span" title="{{ item.regions or 'N/A' }}">{{ item.region_count }}</span>
-                    </td>
-                    <td>
-                        <span class="tooltip-span" title="{{ item.engines or 'N/A' }}">{{ item.engine_count }}</span>
-                    </td>
+                    <td>{{ item.regions or 'N/A' }}</td>
+                    <td>{{ item.engines or 'N/A' }}</td>
                     <td class="col-actions">
                         <button class="delete-btn" data-table="coverage" data-pk="{{ item.coverage_id }}" title="Delete item">❎</button>
                     </td>
