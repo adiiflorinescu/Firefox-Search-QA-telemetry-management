@@ -117,7 +117,7 @@
 
     <!-- MODIFIED: Coverage Table with expandable rows -->
     <details open>
-        <summary>Test Case Coverage</summary>
+        <summary>Test Case Coverage ({{ coverage_count }})</summary>
         <table id="coverage-table">
             <thead>
                 <tr>
@@ -127,6 +127,7 @@
                 </tr>
             </thead>
             <tbody id="coverage-body">
+                <!-- MODIFIED: The loop and data attributes are updated for the new query structure -->
                 {% for item in coverage %}
                 <tr data-metric-name="{{ item.metric_name }}">
                     <td colspan="3">
@@ -168,7 +169,7 @@
 
     <!-- Glean and Legacy tables ... -->
     <details open>
-        <summary>Glean Metrics</summary>
+        <summary>Glean Metrics ({{ glean_count }})</summary>
         <table id="glean-table">
             <thead>
                 <tr>
@@ -200,7 +201,7 @@
     </details>
 
     <details open>
-        <summary>Legacy Metrics</summary>
+        <summary>Legacy Metrics ({{ legacy_count }})</summary>
         <table id="legacy-table">
             <thead>
                 <tr>

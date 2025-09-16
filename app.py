@@ -39,6 +39,27 @@ def get_db_connection():
     return conn
 
 
+# --- NEW: Custom Template Filter for TCID links ---
+@app.template_filter('strip_tcid_prefix')
+def strip_tcid_prefix(tcid):
+    """
+    A Jinja2 filter that removes leading non-numeric characters from a TCID string.
+    e.g., 'C12345' -> '12345', 'TC12345' -> '12345'
+    """
+    if not tcid or not isinstance(tcid, str):
+        return tcid
+
+    # Find the first position that is a digit
+    first_digit_index = -1
+    for i, char in enumerate(tcid):
+        if char.isdigit():
+            first_digit_index = i
+            break
+
+    # If a digit is found, return the substring from that point. Otherwise, return original.
+    return tcid[first_digit_index:] if first_digit_index != -1 else tcid
+
+
 # --- Generic CSV Upload Logic ---
 def process_csv_upload(file, table_name, columns, redirect_url):
     """
@@ -71,7 +92,7 @@ def process_csv_upload(file, table_name, columns, redirect_url):
                                 f"Line {i}: Incorrect column count. Expected {len(columns)}, got {len(row)}.")
                             continue
 
-                        # MODIFIED: Unpack all new columns
+                        # REVERTED: TCID is now used as-is from the CSV
                         tc_id, tcid_title, metrics_str, metric_type, region, engine = (
                             row[0], row[1], row[2], row[3].lower().strip(), row[4], row[5]
                         )
@@ -209,6 +230,7 @@ def metrics():
     legacy_metrics = conn.execute(
         'SELECT * FROM legacy_metrics WHERE is_deleted = FALSE ORDER BY legacy_name').fetchall()
 
+
     coverage_query = """
         SELECT
             c.tc_id,
@@ -254,6 +276,9 @@ def metrics():
         glean_metrics=glean_metrics,
         legacy_metrics=legacy_metrics,
         coverage=coverage,
+        coverage_count=len(coverage),
+        glean_count=len(glean_metrics),
+        legacy_count=len(legacy_metrics),
         tc_base_url=config.TC_BASE_URL,
         show_management=session.get('show_management', False)
     )
@@ -412,7 +437,7 @@ def extract_probes():
 def soft_delete(table_name, pk):
     """Marks an item as deleted in the database."""
     pk_columns = {
-        'coverage': 'coverage_id',
+        'coverage': 'link_id', # MODIFIED: We now delete by the specific link ID
         'glean_metrics': 'glean_name',
         'legacy_metrics': 'legacy_name'
     }
@@ -421,13 +446,15 @@ def soft_delete(table_name, pk):
         return jsonify({'success': False, 'error': 'Invalid table name'}), 400
 
     pk_column = pk_columns[table_name]
+    target_table = 'coverage_to_metric_link' if table_name == 'coverage' else table_name
 
     try:
         with get_db_connection() as conn:
+            # Soft delete the specific link, not the whole coverage entry
             if table_name == 'coverage':
-                conn.execute(f"UPDATE coverage SET is_deleted = TRUE WHERE {pk_column} = ?", (pk,))
+                 conn.execute(f"UPDATE coverage SET is_deleted = TRUE WHERE coverage_id IN (SELECT coverage_id FROM coverage_to_metric_link WHERE {pk_column} = ?)", (pk,))
             else:
-                conn.execute(f"UPDATE {table_name} SET is_deleted = TRUE WHERE {pk_column} = ?", (pk,))
+                conn.execute(f"UPDATE {target_table} SET is_deleted = TRUE WHERE {pk_column} = ?", (pk,))
         return jsonify({'success': True})
     except sqlite3.Error as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -449,7 +476,7 @@ def add_coverage():
     Handles the form submission for a new coverage entry, validating that the
     associated metrics exist in the corresponding glean or legacy table.
     """
-    # MODIFIED: Get new region and engine fields from form
+    # REVERTED: TCID is now used as-is from the form
     tc_id = request.form.get('tc_id')
     tcid_title = request.form.get('tcid_title')
     region = request.form.get('region')
