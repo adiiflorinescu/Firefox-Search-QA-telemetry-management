@@ -78,7 +78,7 @@
             font-size: 1rem;
             font-weight: normal;
             background-color: transparent;
-            padding: 0;
+            padding: 12px; /* Add padding back to the summary for clickable area */
             position: relative;
         }
         #coverage-table summary::-webkit-details-marker {
@@ -87,14 +87,22 @@
         #coverage-table summary {
             list-style: none; /* For Firefox */
         }
-        #coverage-table .summary-grid {
-            display: grid;
-            grid-template-columns: 3fr 1fr 1fr;
-            width: 100%;
-            align-items: center;
+
+        /* <<< MODIFIED >>> Remove borders from the main metric rows */
+        #coverage-table #coverage-body > tr > td {
+            border: none;
+            padding: 0;
         }
-        #coverage-table .summary-grid > span {
-            padding: 12px;
+
+        /* Fixed-width columns for counts */
+        #coverage-table th:not(:first-child),
+        #coverage-table td:not(:first-child) {
+            text-align: center;
+            width: 120px; /* Set a fixed width for the count columns */
+            border-left: 1px solid #eef; /* Add left border back to count cells */
+        }
+        #coverage-table #coverage-body > tr:hover {
+             background-color: #f7f9fc; /* Ensure hover effect still works */
         }
     </style>
 </head>
@@ -102,20 +110,21 @@
 
 <div class="container">
     <nav>
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
-        <a href="{{ url_for('metrics') }}" class="active">View Metrics</a>
-        <a href="{{ url_for('reports') }}">Metric Reports</a>
+    <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
+    <a href="{{ url_for('metrics') }}" class="active">View Metrics</a>
+    <a href="{{ url_for('reports') }}">Metric Reports</a>
+    <a href="{{ url_for('planning') }}">Coverage Planning</a>
     </nav>
 
     <h1>Metrics Data</h1>
 
     <div class="search-container">
         <label for="search-field"><h2>Global Search</h2></label>
-        <input type="search" id="search-field" list="suggestions-all" placeholder="Search by Metric...">
+        <input type="search" id="search-field" list="suggestions-all" placeholder="Search by Metric, TC ID, Region, or Engine...">
         <datalist id="suggestions-all"></datalist>
     </div>
 
-    <!-- MODIFIED: Coverage Table with expandable rows -->
+    <!-- MODIFIED: Coverage Table with expandable rows and new TCID Count column -->
     <details open>
         <summary>Test Case Coverage ({{ coverage_count }})</summary>
         <table id="coverage-table">
@@ -124,21 +133,17 @@
                     <th>Associated Metrics</th>
                     <th>Region Count</th>
                     <th>Engine Count</th>
+                    <th>TCID Count</th>
                 </tr>
             </thead>
             <tbody id="coverage-body">
-                <!-- MODIFIED: The loop and data attributes are updated for the new query structure -->
                 {% for item in coverage %}
-                <tr data-metric-name="{{ item.metric_name }}">
-                    <td colspan="3">
+                {# This outer row is now just a container for the details #}
+                <tr class="metric-row" data-metric-name="{{ item.metric_name }}">
+                    {# Replaced colspan with individual <td> elements #}
+                    <td>
                         <details>
-                            <summary>
-                                <div class="summary-grid">
-                                    <span>{{ item.metric_name }}</span>
-                                    <span>{{ item.region_count }}</span>
-                                    <span>{{ item.engine_count }}</span>
-                                </div>
-                            </summary>
+                            <summary>{{ item.metric_name }}</summary>
                             <div class="details-table-container">
                                 <table class="details-table">
                                     <thead>
@@ -149,11 +154,12 @@
                                         </tr>
                                     </thead>
                                     <tbody>
+                                        {# The data is pre-sorted in app.py #}
                                         {% for detail in item.details %}
-                                        <tr>
-                                            <td>{{ detail.engine or 'N/A' }}</td>
-                                            <td>{{ detail.region or 'N/A' }}</td>
-                                            <td><a href="{{ tc_base_url }}{{ detail.tc_id }}" target="_blank">{{ detail.tc_id }}</a></td>
+                                        <tr class="detail-row" data-engine="{{ detail.engine or '' }}" data-region="{{ detail.region or '' }}" data-tcid="{{ detail.tc_id }}">
+                                            <td>{{ detail.engine or 'NoEngine' }}</td>
+                                            <td>{{ detail.region or 'NoRegion' }}</td>
+                                            <td><a href="{{ tc_base_url }}{{ detail.tc_id | strip_tcid_prefix }}" target="_blank">{{ detail.tc_id }}</a></td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -161,6 +167,9 @@
                             </div>
                         </details>
                     </td>
+                    <td>{{ item.region_count }}</td>
+                    <td>{{ item.engine_count }}</td>
+                    <td>{{ item.details | length }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -240,6 +249,7 @@
                 .then(response => response.json())
                 .then(data => {
                     const datalist = document.getElementById(datalistId);
+                    if (!datalist) return;
                     datalist.innerHTML = '';
                     data.forEach(item => {
                         const option = document.createElement('option');
@@ -253,32 +263,59 @@
         const searchField = document.getElementById('search-field');
         const gleanRows = document.querySelectorAll('#glean-table tbody tr');
         const legacyRows = document.querySelectorAll('#legacy-table tbody tr');
-        const coverageRows = document.querySelectorAll('#coverage-table tbody tr');
+        const coverageRows = document.querySelectorAll('#coverage-table tbody tr.metric-row');
 
         function filterContent() {
             const searchTerm = searchField.value.toLowerCase();
 
+            // Filter Glean table
             gleanRows.forEach(row => {
                 const name = row.dataset.name.toLowerCase();
                 const matchesSearch = name.includes(searchTerm) || searchTerm === '';
                 row.classList.toggle('hidden', !matchesSearch);
             });
 
+            // Filter Legacy table
             legacyRows.forEach(row => {
                 const name = row.dataset.name.toLowerCase();
                 const matchesSearch = name.includes(searchTerm) || searchTerm === '';
                 row.classList.toggle('hidden', !matchesSearch);
             });
 
+            // Filter Coverage table with enhanced logic
             coverageRows.forEach(row => {
                 const metricName = row.dataset.metricName.toLowerCase();
-                const matches = metricName.includes(searchTerm) || searchTerm === '';
-                row.classList.toggle('hidden', !matches);
+                const detailsElement = row.querySelector('details');
+                const detailRows = row.querySelectorAll('.detail-row');
+                let hasMatchInDetails = false;
+
+                // Check if any detail row matches the search term
+                detailRows.forEach(detailRow => {
+                    const tcid = detailRow.dataset.tcid.toLowerCase();
+                    const region = detailRow.dataset.region.toLowerCase();
+                    const engine = detailRow.dataset.engine.toLowerCase();
+                    if (tcid.includes(searchTerm) || region.includes(searchTerm) || engine.includes(searchTerm)) {
+                        hasMatchInDetails = true;
+                    }
+                });
+
+                const matchesMetricName = metricName.includes(searchTerm);
+                const shouldBeVisible = matchesMetricName || hasMatchInDetails || searchTerm === '';
+
+                row.classList.toggle('hidden', !shouldBeVisible);
+
+                // Auto-expand details if a match is found within them and a search is active
+                if (searchTerm !== '' && hasMatchInDetails && !matchesMetricName) {
+                    detailsElement.open = true;
+                } else if (searchTerm === '') {
+                    // Optional: close all details when search is cleared
+                    detailsElement.open = false;
+                }
             });
         }
 
         searchField.addEventListener('input', filterContent);
-        filterContent();
+        filterContent(); // Initial filter call
 
         document.querySelectorAll('.delete-btn').forEach(button => {
             button.addEventListener('click', function() {
@@ -309,7 +346,8 @@
         document.addEventListener('keydown', function(event) {
             if (event.ctrlKey && event.shiftKey && event.key === 'D') {
                 event.preventDefault();
-                document.getElementById('coverage-body').classList.toggle('actions-visible');
+                // This shortcut might need rethinking with the new nested structure,
+                // but for now, it will show delete buttons on Glean/Legacy tables.
                 document.getElementById('glean-body').classList.toggle('actions-visible');
                 document.getElementById('legacy-body').classList.toggle('actions-visible');
             }

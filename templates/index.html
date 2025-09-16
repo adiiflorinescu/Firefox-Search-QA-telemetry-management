@@ -77,10 +77,10 @@
 
 <div class="container">
     <nav>
-        <!-- MODIFIED: Visibility is now controlled by the 'show_management' variable -->
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="active {% if not show_management %}hidden{% endif %}">Data Management</a>
-        <a href="{{ url_for('metrics') }}">View Metrics</a>
-        <a href="{{ url_for('reports') }}">Metric Reports</a>
+    <a href="{{ url_for('index') }}" id="nav-data-management" class="active {% if not show_management %}hidden{% endif %}">Data Management</a>
+    <a href="{{ url_for('metrics') }}">View Metrics</a>
+    <a href="{{ url_for('reports') }}">Metric Reports</a>
+    <a href="{{ url_for('planning') }}">Coverage Planning</a>
     </nav>
 
     <h1>Data Management</h1>

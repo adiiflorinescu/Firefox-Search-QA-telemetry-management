@@ -1,3 +1,5 @@
+# C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app.py
+
 import sqlite3
 import os
 import csv
@@ -230,46 +232,62 @@ def metrics():
     legacy_metrics = conn.execute(
         'SELECT * FROM legacy_metrics WHERE is_deleted = FALSE ORDER BY legacy_name').fetchall()
 
-
     coverage_query = """
+        WITH MetricDetails AS (
+            SELECT
+                l.metric_name,
+                c.tc_id,
+                l.region,
+                l.engine
+            FROM coverage_to_metric_link l
+            JOIN coverage c ON l.coverage_id = c.coverage_id
+            WHERE c.is_deleted = FALSE AND l.metric_name IS NOT NULL
+        ),
+        MetricCounts AS (
+            SELECT
+                metric_name,
+                COUNT(DISTINCT region) as region_count,
+                COUNT(DISTINCT engine) as engine_count
+            FROM MetricDetails
+            GROUP BY metric_name
+        )
         SELECT
-            c.tc_id,
-            l.metric_name,
-            l.region,
-            l.engine
-        FROM coverage_to_metric_link l
-        JOIN coverage c ON l.coverage_id = c.coverage_id
-        WHERE c.is_deleted = FALSE AND l.metric_name IS NOT NULL
+            mc.metric_name,
+            mc.region_count,
+            mc.engine_count,
+            md.tc_id,
+            md.region,
+            md.engine
+        FROM MetricCounts mc
+        JOIN MetricDetails md ON mc.metric_name = md.metric_name
+        ORDER BY
+            mc.metric_name,
+            -- Sort by engine, pushing nulls/empty strings or 'NoEngine' to the end
+            CASE WHEN md.engine IS NULL OR md.engine = '' or md.engine = 'NoEngine' THEN 1 ELSE 0 END,
+            md.engine,
+            -- Then sort by region, pushing nulls/empty strings or 'NoRegion' to the end
+            CASE WHEN md.region IS NULL OR md.region = '' or md.region = 'NoRegion' THEN 1 ELSE 0 END,
+            md.region;
     """
     raw_coverage_data = conn.execute(coverage_query).fetchall()
     conn.close()
 
-    metric_coverage = defaultdict(lambda: {'details': [], 'regions': set(), 'engines': set()})
+    # --- Python logic is now much simpler ---
+    # Group the pre-sorted data by metric
+    coverage_grouped = defaultdict(lambda: {'region_count': 0, 'engine_count': 0, 'details': []})
     for row in raw_coverage_data:
-        metric_name = row['metric_name']
-        metric_coverage[metric_name]['details'].append({
-            'tc_id': row['tc_id'],
-            'region': row['region'],
-            'engine': row['engine']
-        })
-        if row['region']:
-            metric_coverage[metric_name]['regions'].add(row['region'])
-        if row['engine']:
-            metric_coverage[metric_name]['engines'].add(row['engine'])
+        metric = coverage_grouped[row['metric_name']]
+        if not metric['details']: # Set counts only on the first item for a metric
+            metric['region_count'] = row['region_count']
+            metric['engine_count'] = row['engine_count']
+        # Since the data is pre-sorted by SQL, we just append.
+        metric['details'].append(dict(row))
 
-    coverage = []
-    for metric, data in sorted(metric_coverage.items()):
-        # Sort details by engine (alphabetically), then region, then TC ID
-        sorted_details = sorted(
-            data['details'],
-            key=lambda x: (x['engine'] or '', x['region'] or '', x['tc_id'] or '')
-        )
-        coverage.append({
-            'metric_name': metric,
-            'region_count': len(data['regions']),
-            'engine_count': len(data['engines']),
-            'details': sorted_details
-        })
+    # Convert defaultdict to a list of dicts for the template, sorted by metric name
+    coverage = [
+        {'metric_name': key, **value}
+        for key, value in sorted(coverage_grouped.items())
+    ]
 
     return render_template(
         'metrics.html',
@@ -347,6 +365,186 @@ def reports():
         legacy_covered_tcs=legacy_covered_tcs,
         show_management=session.get('show_management', False)
     )
+
+
+# --- NEW: Coverage Planning Routes ---
+# C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app.py
+
+# ... (imports and other functions are unchanged) ...
+
+# --- NEW: Coverage Planning Routes ---
+@app.route('/planning')
+def planning():
+    """Renders the new Coverage Planning page."""
+    conn = get_db_connection()
+
+    # --- MODIFIED: Fetch Glean and Legacy metrics separately to treat them as distinct entities ---
+
+    # 1a. Fetch all existing GLEAN metrics and their current coverage counts
+    glean_query = """
+        SELECT
+            g.glean_name as metric_name,
+            'Glean' as metric_type,
+            COUNT(DISTINCT l.link_id) as tcid_count,
+            COUNT(DISTINCT l.region) as region_count,
+            COUNT(DISTINCT l.engine) as engine_count
+        FROM glean_metrics g
+        LEFT JOIN coverage_to_metric_link l ON g.glean_name = l.metric_name AND l.is_deleted = FALSE
+        WHERE g.is_deleted = FALSE
+        GROUP BY g.glean_name
+    """
+
+    # 1b. Fetch all existing LEGACY metrics and their current coverage counts
+    legacy_query = """
+        SELECT
+            lg.legacy_name as metric_name,
+            'Legacy' as metric_type,
+            COUNT(DISTINCT l.link_id) as tcid_count,
+            COUNT(DISTINCT l.region) as region_count,
+            COUNT(DISTINCT l.engine) as engine_count
+        FROM legacy_metrics lg
+        LEFT JOIN coverage_to_metric_link l ON lg.legacy_name = l.metric_name AND l.is_deleted = FALSE
+        WHERE lg.is_deleted = FALSE
+        GROUP BY lg.legacy_name
+    """
+
+    glean_planning_data = conn.execute(glean_query).fetchall()
+    legacy_planning_data = conn.execute(legacy_query).fetchall()
+
+    # 1c. Combine and sort the results in Python
+    planning_data = sorted(glean_planning_data + legacy_planning_data, key=lambda x: x['metric_name'])
+
+
+    # 2. Fetch existing coverage details (for the sub-table)
+    coverage_data_query = """
+        SELECT c.tc_id, l.metric_name, l.region, l.engine
+        FROM coverage c
+        JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
+        WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE
+    """
+    coverage_data = conn.execute(coverage_data_query).fetchall()
+
+    metric_to_existing_tcs = defaultdict(list)
+    for row in coverage_data:
+        metric_to_existing_tcs[row['metric_name']].append(dict(row))
+
+    # 3. Fetch all planning data (priorities and planned TCs)
+    planning_entries = conn.execute("SELECT * FROM planning WHERE is_deleted = FALSE").fetchall()
+
+    metric_to_priority = {}
+    metric_to_planned_tcs = defaultdict(list)
+    for entry in planning_entries:
+        if entry['priority']:
+            metric_to_priority[entry['metric_name']] = entry['priority']
+        # Only add entries that are actual plans (have region or engine)
+        if entry['region'] or entry['engine']:
+            metric_to_planned_tcs[entry['metric_name']].append(dict(entry))
+
+    conn.close()
+
+    return render_template(
+        'planning.html',
+        planning_data=planning_data,
+        metric_to_existing_tcs=metric_to_existing_tcs,
+        metric_to_planned_tcs=metric_to_planned_tcs,
+        metric_to_priority=metric_to_priority,
+        tc_base_url=config.TC_BASE_URL,
+        show_management=session.get('show_management', False)
+    )
+
+# ... (rest of app.py is unchanged) ...
+
+
+@app.route('/planning/update', methods=['POST'])
+def update_planning_entry():
+    """Adds/updates/deletes a planning entry via AJAX."""
+    data = request.get_json()
+    action = data.get('action')
+    metric_name = data.get('metric_name')
+
+    if not metric_name:
+        return jsonify({'success': False, 'error': 'Metric name is required.'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            if action == 'set_priority':
+                priority = data.get('priority')
+                # Use INSERT OR REPLACE to handle both new and existing priorities for a metric
+                cursor.execute("""
+                    INSERT INTO planning (metric_name, priority) VALUES (?, ?)
+                    ON CONFLICT(metric_name) WHERE tc_id IS NULL
+                    DO UPDATE SET priority=excluded.priority;
+                """, (metric_name, priority if priority != '-' else None))
+
+            elif action == 'add_plan':
+                # MODIFIED: This action now only adds plans without TCIDs
+                region = data.get('region') or None
+                engine = data.get('engine') or None
+
+                if not region and not engine:
+                    return jsonify(
+                        {'success': False, 'error': 'At least a Region or Engine is required to add a plan.'}), 400
+
+                cursor.execute("""
+                    INSERT OR IGNORE INTO planning (metric_name, tc_id, region, engine)
+                    VALUES (?, ?, ?, ?)
+                """, (metric_name, None, region, engine))
+
+                # NEW: Get the ID of the row that was just inserted
+                new_id = cursor.lastrowid
+                # The function will now return this ID to the frontend
+                return jsonify({'success': True, 'new_id': new_id})
+
+            elif action == 'remove_plan':
+                # "Delete" a planned entry
+                planning_id = data.get('planning_id')
+                cursor.execute("DELETE FROM planning WHERE planning_id = ?", (planning_id,))
+
+            elif action == 'promote_to_coverage':
+                # This action promotes a plan to actual coverage once a TCID is added
+                planning_id = data.get('planning_id')
+                new_tc_id = data.get('new_tc_id')
+
+                if not new_tc_id:
+                    return jsonify({'success': False, 'error': 'A valid TC ID is required to promote to coverage.'}), 400
+
+                # 1. Get the details of the planned entry
+                plan = cursor.execute("SELECT * FROM planning WHERE planning_id = ?", (planning_id,)).fetchone()
+                if not plan:
+                    return jsonify({'success': False, 'error': 'Planning entry not found.'}), 404
+
+                # 2. Find or create the main coverage entry for the new TC ID
+                coverage_entry = cursor.execute(
+                    "SELECT coverage_id FROM coverage WHERE tc_id = ? AND is_deleted = FALSE", (new_tc_id,)
+                ).fetchone()
+
+                if coverage_entry:
+                    coverage_id = coverage_entry['coverage_id']
+                else:
+                    cursor.execute("INSERT INTO coverage (tc_id) VALUES (?)", (new_tc_id,))
+                    coverage_id = cursor.lastrowid
+
+                # 3. Create the link in the main coverage link table
+                try:
+                    cursor.execute(
+                        """INSERT INTO coverage_to_metric_link (coverage_id, metric_name, region, engine)
+                           VALUES (?, ?, ?, ?)""",
+                        (coverage_id, plan['metric_name'], plan['region'], plan['engine'])
+                    )
+                except sqlite3.IntegrityError:
+                    # This exact link already exists, which is fine.
+                    pass
+
+                # 4. Delete the original planning entry
+                cursor.execute("DELETE FROM planning WHERE planning_id = ?", (planning_id,))
+
+            # Generic success message for actions that don't return specific data
+            return jsonify({'success': True})
+
+    except sqlite3.Error as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # --- MODIFIED: Probe Extraction Route ---

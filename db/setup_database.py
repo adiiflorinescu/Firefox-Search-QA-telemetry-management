@@ -53,7 +53,7 @@ def create_tables(cursor):
     );
     """
 
-    # MODIFIED: The link table now includes region and engine, and a more specific UNIQUE constraint.
+    # The link table now includes region and engine, and a more specific UNIQUE constraint.
     sql_create_link_table = """
     CREATE TABLE coverage_to_metric_link (
         link_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,47 +61,73 @@ def create_tables(cursor):
         metric_name TEXT NOT NULL,
         region TEXT,
         engine TEXT,
+        is_deleted BOOLEAN DEFAULT FALSE, -- Added is_deleted flag
         FOREIGN KEY (coverage_id) REFERENCES coverage (coverage_id) ON DELETE CASCADE,
         UNIQUE(coverage_id, metric_name, region, engine)
     );
+    """
+
+    # CORRECTED: Removed the incompatible 'UNIQUE...WHERE' syntax from the table definition.
+    sql_create_planning_table = """
+    CREATE TABLE planning (
+        planning_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        metric_name TEXT NOT NULL,
+        priority TEXT,
+        tc_id TEXT,
+        region TEXT,
+        engine TEXT,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        created_at DATETIME DEFAULT (datetime('now')),
+        updated_at DATETIME DEFAULT (datetime('now'))
+    );
+    """
+
+    # NEW: Create partial unique indexes separately for wider SQLite version compatibility.
+    sql_create_planning_priority_index = """
+    CREATE UNIQUE INDEX idx_planning_metric_priority
+    ON planning(metric_name)
+    WHERE tc_id IS NULL;
+    """
+
+    sql_create_planning_tc_index = """
+    CREATE UNIQUE INDEX idx_planning_metric_tc
+    ON planning(metric_name, tc_id, region, engine)
+    WHERE tc_id IS NOT NULL;
     """
 
     cursor.execute(sql_create_glean_table)
     cursor.execute(sql_create_legacy_table)
     cursor.execute(sql_create_coverage_table)
     cursor.execute(sql_create_link_table)
+    cursor.execute(sql_create_planning_table)
+
+    # Execute the index creation statements
+    cursor.execute(sql_create_planning_priority_index)
+    cursor.execute(sql_create_planning_tc_index)
 
 
 def create_triggers(cursor):
     """Creates triggers to auto-update the 'updated_at' column for all tables."""
     print("Creating triggers for auto-updating timestamps...")
 
-    # Trigger for glean_metrics
-    cursor.execute("""
-        CREATE TRIGGER update_glean_metrics_updated_at
-        AFTER UPDATE ON glean_metrics FOR EACH ROW
-        BEGIN
-            UPDATE glean_metrics SET updated_at = datetime('now') WHERE glean_name = OLD.glean_name;
-        END;
-    """)
+    tables = ['glean_metrics', 'legacy_metrics', 'coverage', 'planning']
+    pk_columns = {
+        'glean_metrics': 'glean_name',
+        'legacy_metrics': 'legacy_name',
+        'coverage': 'coverage_id',
+        'planning': 'planning_id'
+    }
 
-    # Trigger for legacy_metrics
-    cursor.execute("""
-        CREATE TRIGGER update_legacy_metrics_updated_at
-        AFTER UPDATE ON legacy_metrics FOR EACH ROW
-        BEGIN
-            UPDATE legacy_metrics SET updated_at = datetime('now') WHERE legacy_name = OLD.legacy_name;
-        END;
-    """)
-
-    # Trigger for the new coverage table
-    cursor.execute("""
-        CREATE TRIGGER update_coverage_updated_at
-        AFTER UPDATE ON coverage FOR EACH ROW
-        BEGIN
-            UPDATE coverage SET updated_at = datetime('now') WHERE coverage_id = OLD.coverage_id;
-        END;
-    """)
+    for table in tables:
+        pk = pk_columns[table]
+        trigger_sql = f"""
+            CREATE TRIGGER update_{table}_updated_at
+            AFTER UPDATE ON {table} FOR EACH ROW
+            BEGIN
+                UPDATE {table} SET updated_at = datetime('now') WHERE {pk} = OLD.{pk};
+            END;
+        """
+        cursor.execute(trigger_sql)
 
 
 def main():
@@ -112,8 +138,15 @@ def main():
         print(f"Created instance folder: {INSTANCE_FOLDER}")
 
     if os.path.exists(DB_FILE):
-        os.remove(DB_FILE)
-        print(f"Removed existing database file: {DB_FILE}")
+        # Safety check to prevent accidental deletion
+        response = input(
+            f"Database file '{DB_FILE}' already exists. Are you sure you want to delete and re-create it? (y/N): ")
+        if response.lower() == 'y':
+            os.remove(DB_FILE)
+            print(f"Removed existing database file: {DB_FILE}")
+        else:
+            print("Database creation cancelled.")
+            return
 
     try:
         with sqlite3.connect(DB_FILE) as conn:

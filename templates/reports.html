@@ -118,9 +118,10 @@
 
 <div class="container">
     <nav>
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
-        <a href="{{ url_for('metrics') }}">View Metrics</a>
-        <a href="{{ url_for('reports') }}" class="active">Metric Reports</a>
+    <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
+    <a href="{{ url_for('metrics') }}">View Metrics</a>
+    <a href="{{ url_for('reports') }}" class="active">Metric Reports</a>
+    <a href="{{ url_for('planning') }}">Coverage Planning</a>
     </nav>
 
     <h1>Metric Reports</h1>
