@@ -36,7 +36,7 @@
         input[type="search"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         .hidden { display: none; }
 
-        /* MODIFIED: Styles for delete icon button */
+        /* Styles for delete icon button */
         .delete-btn {
             background: none;
             border: none;
@@ -61,10 +61,40 @@
             padding-left: 8px;
             padding-right: 8px;
         }
-        /* NEW: Style for tooltip spans */
-        .tooltip-span {
-            cursor: help;
-            border-bottom: 1px dotted #555;
+
+        /* Styles for expandable rows */
+        .details-table-container {
+            padding: 1rem;
+            background-color: #fdfdff;
+            border-top: 1px solid #eef;
+        }
+        .details-table {
+            width: 100%;
+        }
+        .details-table th, .details-table td {
+            font-size: 0.9em;
+        }
+        #coverage-table summary {
+            font-size: 1rem;
+            font-weight: normal;
+            background-color: transparent;
+            padding: 0;
+            position: relative;
+        }
+        #coverage-table summary::-webkit-details-marker {
+            display: none;
+        }
+        #coverage-table summary {
+            list-style: none; /* For Firefox */
+        }
+        #coverage-table .summary-grid {
+            display: grid;
+            grid-template-columns: 3fr 1fr 1fr;
+            width: 100%;
+            align-items: center;
+        }
+        #coverage-table .summary-grid > span {
+            padding: 12px;
         }
     </style>
 </head>
@@ -81,36 +111,55 @@
 
     <div class="search-container">
         <label for="search-field"><h2>Global Search</h2></label>
-        <input type="search" id="search-field" list="suggestions-all" placeholder="Search by TC ID, Metric, Region, or Engine...">
+        <input type="search" id="search-field" list="suggestions-all" placeholder="Search by Metric...">
         <datalist id="suggestions-all"></datalist>
     </div>
 
-    <!-- MODIFIED: Coverage Table with new columns -->
+    <!-- MODIFIED: Coverage Table with expandable rows -->
     <details open>
         <summary>Test Case Coverage ({{ coverage_count }})</summary>
         <table id="coverage-table">
             <thead>
                 <tr>
-                    <th>TC ID</th>
-                    <th>Associated Metric</th>
-                    <th>Region</th>
-                    <th>Engine</th>
-                    <th class="col-actions"></th>
+                    <th>Associated Metrics</th>
+                    <th>Region Count</th>
+                    <th>Engine Count</th>
                 </tr>
             </thead>
             <tbody id="coverage-body">
                 <!-- MODIFIED: The loop and data attributes are updated for the new query structure -->
                 {% for item in coverage %}
-                <tr data-tcid="{{ item.tc_id }}" data-metric="{{ item.metric_name or '' }}" data-region="{{ item.region or '' }}" data-engine="{{ item.engine or '' }}">
-                    <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank" title="{{ item.tcid_title or 'No title' }}">{{ item.tc_id }}</a></td>
-                    <td>{{ item.metric_name or 'N/A' }}</td>
-                    <td>{{ item.region or 'N/A' }}</td>
-                    <td>{{ item.engine or 'N/A' }}</td>
-                    <td class="col-actions">
-                        <!-- MODIFIED: Delete button now uses the unique link_id -->
-                        {% if item.link_id %}
-                        <button class="delete-btn" data-table="coverage" data-pk="{{ item.link_id }}" title="Delete this specific metric link">❎</button>
-                        {% endif %}
+                <tr data-metric-name="{{ item.metric_name }}">
+                    <td colspan="3">
+                        <details>
+                            <summary>
+                                <div class="summary-grid">
+                                    <span>{{ item.metric_name }}</span>
+                                    <span>{{ item.region_count }}</span>
+                                    <span>{{ item.engine_count }}</span>
+                                </div>
+                            </summary>
+                            <div class="details-table-container">
+                                <table class="details-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Engine</th>
+                                            <th>Region</th>
+                                            <th>TC ID</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for detail in item.details %}
+                                        <tr>
+                                            <td>{{ detail.engine or 'N/A' }}</td>
+                                            <td>{{ detail.region or 'N/A' }}</td>
+                                            <td><a href="{{ tc_base_url }}{{ detail.tc_id }}" target="_blank">{{ detail.tc_id }}</a></td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
                     </td>
                 </tr>
                 {% endfor %}
@@ -118,7 +167,7 @@
         </table>
     </details>
 
-    <!-- ... (Glean and Legacy tables remain the same) ... -->
+    <!-- Glean and Legacy tables ... -->
     <details open>
         <summary>Glean Metrics ({{ glean_count }})</summary>
         <table id="glean-table">
@@ -221,13 +270,9 @@
                 row.classList.toggle('hidden', !matchesSearch);
             });
 
-            // MODIFIED: Global search now checks the new data attributes
             coverageRows.forEach(row => {
-                const tcid = row.dataset.tcid.toLowerCase();
-                const metric = row.dataset.metric.toLowerCase();
-                const region = row.dataset.region.toLowerCase();
-                const engine = row.dataset.engine.toLowerCase();
-                const matches = tcid.includes(searchTerm) || metric.includes(searchTerm) || region.includes(searchTerm) || engine.includes(searchTerm) || searchTerm === '';
+                const metricName = row.dataset.metricName.toLowerCase();
+                const matches = metricName.includes(searchTerm) || searchTerm === '';
                 row.classList.toggle('hidden', !matches);
             });
         }

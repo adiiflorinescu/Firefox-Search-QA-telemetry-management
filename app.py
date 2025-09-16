@@ -230,25 +230,47 @@ def metrics():
     legacy_metrics = conn.execute(
         'SELECT * FROM legacy_metrics WHERE is_deleted = FALSE ORDER BY legacy_name').fetchall()
 
-    # MODIFIED: Use LEFT JOIN to include coverage entries that have no associated metrics.
-    # This ensures all test cases are displayed, even if their metric is 'N/A'.
+
     coverage_query = """
         SELECT
             c.tc_id,
-            c.tcid_title,
-            l.link_id,
             l.metric_name,
             l.region,
             l.engine
-        FROM coverage c
-        LEFT JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
-        WHERE c.is_deleted = FALSE
-        ORDER BY c.tc_id, l.metric_name;
+        FROM coverage_to_metric_link l
+        JOIN coverage c ON l.coverage_id = c.coverage_id
+        WHERE c.is_deleted = FALSE AND l.metric_name IS NOT NULL
     """
-    coverage = conn.execute(coverage_query).fetchall()
+    raw_coverage_data = conn.execute(coverage_query).fetchall()
     conn.close()
 
-    # MODIFIED: Pass the counts to the template
+    metric_coverage = defaultdict(lambda: {'details': [], 'regions': set(), 'engines': set()})
+    for row in raw_coverage_data:
+        metric_name = row['metric_name']
+        metric_coverage[metric_name]['details'].append({
+            'tc_id': row['tc_id'],
+            'region': row['region'],
+            'engine': row['engine']
+        })
+        if row['region']:
+            metric_coverage[metric_name]['regions'].add(row['region'])
+        if row['engine']:
+            metric_coverage[metric_name]['engines'].add(row['engine'])
+
+    coverage = []
+    for metric, data in sorted(metric_coverage.items()):
+        # Sort details by engine (alphabetically), then region, then TC ID
+        sorted_details = sorted(
+            data['details'],
+            key=lambda x: (x['engine'] or '', x['region'] or '', x['tc_id'] or '')
+        )
+        coverage.append({
+            'metric_name': metric,
+            'region_count': len(data['regions']),
+            'engine_count': len(data['engines']),
+            'details': sorted_details
+        })
+
     return render_template(
         'metrics.html',
         glean_metrics=glean_metrics,
