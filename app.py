@@ -209,25 +209,45 @@ def metrics():
     legacy_metrics = conn.execute(
         'SELECT * FROM legacy_metrics WHERE is_deleted = FALSE ORDER BY legacy_name').fetchall()
 
-    # MODIFIED: Query to aggregate new region and engine data for each TCID.
     coverage_query = """
         SELECT
-            c.coverage_id,
             c.tc_id,
-            c.tcid_title,
-            GROUP_CONCAT(DISTINCT l.metric_name) as metrics,
-            COUNT(DISTINCT l.region) as region_count,
-            GROUP_CONCAT(DISTINCT l.region) as regions,
-            COUNT(DISTINCT l.engine) as engine_count,
-            GROUP_CONCAT(DISTINCT l.engine) as engines
-        FROM coverage c
-        LEFT JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
-        WHERE c.is_deleted = FALSE
-        GROUP BY c.coverage_id
-        ORDER BY c.tc_id;
+            l.metric_name,
+            l.region,
+            l.engine
+        FROM coverage_to_metric_link l
+        JOIN coverage c ON l.coverage_id = c.coverage_id
+        WHERE c.is_deleted = FALSE AND l.metric_name IS NOT NULL
     """
-    coverage = conn.execute(coverage_query).fetchall()
+    raw_coverage_data = conn.execute(coverage_query).fetchall()
     conn.close()
+
+    metric_coverage = defaultdict(lambda: {'details': [], 'regions': set(), 'engines': set()})
+    for row in raw_coverage_data:
+        metric_name = row['metric_name']
+        metric_coverage[metric_name]['details'].append({
+            'tc_id': row['tc_id'],
+            'region': row['region'],
+            'engine': row['engine']
+        })
+        if row['region']:
+            metric_coverage[metric_name]['regions'].add(row['region'])
+        if row['engine']:
+            metric_coverage[metric_name]['engines'].add(row['engine'])
+
+    coverage = []
+    for metric, data in sorted(metric_coverage.items()):
+        # Sort details by engine (alphabetically), then region, then TC ID
+        sorted_details = sorted(
+            data['details'],
+            key=lambda x: (x['engine'] or '', x['region'] or '', x['tc_id'] or '')
+        )
+        coverage.append({
+            'metric_name': metric,
+            'region_count': len(data['regions']),
+            'engine_count': len(data['engines']),
+            'details': sorted_details
+        })
 
     return render_template(
         'metrics.html',
