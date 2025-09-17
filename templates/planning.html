@@ -109,16 +109,16 @@
                     <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
                     {{ row.metric_name }}
                 </td>
-                {# --- CORRECTED LOOKUP --- #}
-                <td class="col-count tcid-count-cell">{{ row.tcid_count + metric_to_planned_tcs.get((row.metric_name, row.metric_type), [])|length }}</td>
+                {# DEFINITIVE FIX 1: Display only the count of existing TCIDs from app.py #}
+                <td class="col-count tcid-count-cell">{{ row.tcid_count }}</td>
                 <td class="col-count">{{ row.region_count }}</td>
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
-                    {# --- CORRECTED LOOKUP --- #}
+                    {# DEFINITIVE FIX 2: Normalize key to lowercase for all dictionary lookups. #}
                     <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
-                        <option value="-" {% if not metric_to_priority.get((row.metric_name, row.metric_type)) %}selected{% endif %}>-</option>
+                        <option value="-" {% if not metric_to_priority.get((row.metric_name, row.metric_type.lower())) %}selected{% endif %}>-</option>
                         {% for i in range(1, 6) %}
-                        <option value="P{{i}}" {% if metric_to_priority.get((row.metric_name, row.metric_type)) == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
+                        <option value="P{{i}}" {% if metric_to_priority.get((row.metric_name, row.metric_type.lower())) == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
                         {% endfor %}
                     </select>
                 </td>
@@ -131,8 +131,11 @@
                                 <tr><th>Engine</th><th>Region</th><th>TC ID</th><th>Actions</th></tr>
                             </thead>
                             <tbody>
-                                {# --- CORRECTED LOOKUP: Existing Entries --- #}
-                                {% for tc in metric_to_existing_tcs.get((row.metric_name, row.metric_type), []) %}
+                                {# DEFINITIVE FIX 3: Combine, sort, and display existing and planned entries. #}
+                                {% set existing = metric_to_existing_tcs.get((row.metric_name, row.metric_type.lower()), []) %}
+                                {% set planned = metric_to_planned_tcs.get((row.metric_name, row.metric_type.lower()), []) %}
+
+                                {% for tc in existing | sort_details %}
                                 <tr>
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>
@@ -140,8 +143,8 @@
                                     <td></td>
                                 </tr>
                                 {% endfor %}
-                                {# --- CORRECTED LOOKUP: Planned Entries --- #}
-                                {% for tc in metric_to_planned_tcs.get((row.metric_name, row.metric_type), []) %}
+
+                                {% for tc in planned %}
                                 <tr class="planned-entry" data-planning-id="{{ tc.planning_id }}">
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>
@@ -240,28 +243,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             updatePlanning(payload).then(data => {
                 if (data.success) {
-                    const newRowHTML = `
-                        <tr class="planned-entry" data-planning-id="${data.new_id || ''}">
-                            <td>${payload.engine || 'NoEngine'}</td>
-                            <td>${payload.region || 'NoRegion'}</td>
-                            <td>
-                                <input type="text" class="editable-tcid" value="" placeholder="Add TC ID to promote...">
-                                <button class="save-tcid-btn">Save</button>
-                            </td>
-                            <td><span class="remove-btn">✖</span></td>
-                        </tr>`;
-                    formRow.insertAdjacentHTML('beforebegin', newRowHTML);
-
-                    const mainRow = table.querySelector(`.metric-row[data-metric-name="${metricName}"][data-metric-type="${metricType}"]`);
-                    const countCell = mainRow.querySelector('.tcid-count-cell');
-                    countCell.textContent = parseInt(countCell.textContent, 10) + 1;
-
-                    // Clear the input fields after successful submission
-                    regionInput.value = '';
-                    engineInput.value = '';
-
-                    // Set focus to the engine input field
-                    engineInput.focus();
+                    // Reload to show the new entry correctly sorted.
+                    window.location.reload();
                 }
             });
         }
@@ -277,9 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 planning_id: plannedRow.dataset.planningId
             }).then(data => {
                 if (data.success) {
-                    const mainRow = table.querySelector(`.metric-row[data-metric-name="${metricName}"][data-metric-type="${metricType}"]`);
-                    const countCell = mainRow.querySelector('.tcid-count-cell');
-                    countCell.textContent = parseInt(countCell.textContent, 10) - 1;
+                    // No need to manually update count, just remove the row
                     plannedRow.remove();
                 }
             });

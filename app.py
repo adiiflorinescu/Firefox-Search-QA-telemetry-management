@@ -8,6 +8,10 @@ import re
 from flask import Flask, jsonify, render_template, request, flash, redirect, url_for, session, Response
 from collections import defaultdict
 from dotenv import load_dotenv
+import logging
+
+# --- Setup Logging ---
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Load Environment Variables ---
 # This will load the .env file in the root directory
@@ -41,7 +45,7 @@ def get_db_connection():
     return conn
 
 
-# --- NEW: Custom Template Filter for TCID links ---
+# --- Custom Template Filters ---
 @app.template_filter('strip_tcid_prefix')
 def strip_tcid_prefix(tcid):
     """
@@ -50,16 +54,29 @@ def strip_tcid_prefix(tcid):
     """
     if not tcid or not isinstance(tcid, str):
         return tcid
+    match = re.search(r'\d', tcid)
+    return tcid[match.start():] if match else tcid
 
-    # Find the first position that is a digit
-    first_digit_index = -1
-    for i, char in enumerate(tcid):
-        if char.isdigit():
-            first_digit_index = i
-            break
-
-    # If a digit is found, return the substring from that point. Otherwise, return original.
-    return tcid[first_digit_index:] if first_digit_index != -1 else tcid
+# --- NEW: Custom sort filter for planning sub-table ---
+@app.template_filter('sort_details')
+def sort_details(details):
+    """
+    Sorts a list of TCID details (dictionaries) for the planning sub-table.
+    - Sorts by engine, then region.
+    - 'NoEngine' and 'NoRegion' are sorted last.
+    """
+    def sort_key(item):
+        engine = item.get('engine')
+        region = item.get('region')
+        # Sort key: (is_NoEngine, engine_name, is_NoRegion, region_name)
+        # This places 'NoEngine'/'NoRegion' at the end of their respective groups.
+        return (
+            engine is None or engine == 'NoEngine',
+            engine,
+            region is None or region == 'NoRegion',
+            region
+        )
+    return sorted(details, key=sort_key)
 
 
 # --- Generic CSV Upload Logic ---
@@ -143,7 +160,6 @@ def process_csv_upload(file, table_name, columns, redirect_url):
                                 )
                                 coverage_id = cursor.lastrowid
 
-                            # --- CORRECTED LOGIC ---
                             # Insert with the metric_type into the link table.
                             for metric in metric_names:
                                 try:
@@ -283,7 +299,7 @@ def metrics():
         key = (row['metric_name'], row['metric_type'])
         metric = coverage_grouped[key]
 
-        if not metric['details']: # Set counts only on the first item
+        if not metric['details']:  # Set counts only on the first item
             metric['region_count'] = row['region_count']
             metric['engine_count'] = row['engine_count']
             metric['tcid_count'] = row['tcid_count']
@@ -318,8 +334,10 @@ def reports():
     total_glean_metrics = conn.execute("SELECT COUNT(*) FROM glean_metrics WHERE is_deleted = FALSE").fetchone()[0]
     total_legacy_metrics = conn.execute("SELECT COUNT(*) FROM legacy_metrics WHERE is_deleted = FALSE").fetchone()[0]
 
-    glean_covered_tcs = conn.execute("SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'glean'").fetchone()[0]
-    legacy_covered_tcs = conn.execute("SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'legacy'").fetchone()[0]
+    glean_covered_tcs = conn.execute(
+        "SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'glean'").fetchone()[0]
+    legacy_covered_tcs = conn.execute(
+        "SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'legacy'").fetchone()[0]
 
     # The main report query is now simpler and more accurate
     report_query = """
@@ -369,32 +387,19 @@ def reports():
 @app.route('/planning')
 def planning():
     """Renders the new Coverage Planning page."""
+    logging.debug("--- Starting planning() route ---")
     conn = get_db_connection()
 
-    # --- CORRECTED QUERY ---
-    # This query now correctly gets all metrics from both glean_metrics and legacy_metrics,
-    # and then LEFT JOINs to the coverage links. This ensures all metrics are displayed,
-    # even those with 0 coverage.
-    planning_base_query = """
-        SELECT
-            m.name as metric_name,
-            m.type as metric_type,
-            COUNT(l.link_id) as tcid_count,
-            COUNT(DISTINCT l.region) as region_count,
-            COUNT(DISTINCT l.engine) as engine_count
-        FROM (
-            SELECT glean_name as name, 'Glean' as type FROM glean_metrics WHERE is_deleted = FALSE
-            UNION ALL
-            SELECT legacy_name as name, 'Legacy' as type FROM legacy_metrics WHERE is_deleted = FALSE
-        ) as m
-        LEFT JOIN coverage_to_metric_link l
-            ON m.name = l.metric_name AND m.type = l.metric_type AND l.is_deleted = FALSE
-        GROUP BY m.name, m.type
-        ORDER BY m.name, m.type;
+    # 1. Get all metrics first. This is our base list.
+    all_metrics_query = """
+        SELECT glean_name as name, 'Glean' as type FROM glean_metrics WHERE is_deleted = FALSE
+        UNION ALL
+        SELECT legacy_name as name, 'Legacy' as type FROM legacy_metrics WHERE is_deleted = FALSE
     """
-    planning_data = conn.execute(planning_base_query).fetchall()
+    all_metrics = conn.execute(all_metrics_query).fetchall()
+    logging.debug(f"Step 1: Found {len(all_metrics)} total metrics.")
 
-    # This query correctly gets all existing TCID links for the sub-tables.
+    # 2. Get all existing coverage links.
     coverage_data_query = """
         SELECT c.tc_id, l.metric_name, l.metric_type, l.region, l.engine
         FROM coverage c
@@ -402,28 +407,67 @@ def planning():
         WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE;
     """
     coverage_data = conn.execute(coverage_data_query).fetchall()
+    logging.debug(f"Step 2: Found {len(coverage_data)} existing coverage links.")
 
-    # Use a (name, type) tuple as the key for unambiguous lookups
+    # 3. Get all planned entries.
+    planning_entries_query = "SELECT * FROM planning WHERE is_deleted = FALSE"
+    planning_entries = conn.execute(planning_entries_query).fetchall()
+    logging.debug(f"Step 3: Found {len(planning_entries)} planning entries.")
+    conn.close()
+
+    # --- Process data in Python for clarity and correctness ---
+    logging.debug("Step 4: Processing data into dictionaries...")
+
+    # 4a. Create dictionary for existing TCIDs.
     metric_to_existing_tcs = defaultdict(list)
     for row in coverage_data:
+        # The metric_type from the link table is already lowercase.
         key = (row['metric_name'], row['metric_type'])
         metric_to_existing_tcs[key].append(dict(row))
 
-    # Fetch all planning data
-    planning_entries = conn.execute("SELECT * FROM planning WHERE is_deleted = FALSE").fetchall()
-
-    # Use a (name, type) tuple as the key
-    metric_to_priority = {}
+    # 4b. Create dictionaries for planned TCIDs and priorities.
     metric_to_planned_tcs = defaultdict(list)
+    metric_to_priority = {}
     for entry in planning_entries:
-        key = (entry['metric_name'], entry['metric_type'])
-        if entry['priority']:
-            metric_to_priority[key] = entry['priority']
-        if entry['region'] or entry['engine']:
-            metric_to_planned_tcs[key].append(dict(entry))
+        metric_type = entry['metric_type']
+        if metric_type:
+            # Normalize to lowercase to match existing_tcs keys
+            key = (entry['metric_name'], metric_type.lower())
+            if entry['priority']:
+                metric_to_priority[key] = entry['priority']
+            # A planned entry is any entry that does NOT have a TCID.
+            if not entry['tc_id']:
+                metric_to_planned_tcs[key].append(dict(entry))
 
-    conn.close()
+    logging.debug(f"Processed {len(metric_to_existing_tcs)} metrics with existing coverage.")
+    logging.debug(f"Processed {len(metric_to_planned_tcs)} metrics with planned entries.")
 
+    # 5. Build the final `planning_data` list for the main grid.
+    logging.debug("Step 5: Building final planning_data for template...")
+    planning_data = []
+    for metric in sorted(all_metrics, key=lambda x: x['name']):
+        # The key for lookup must be normalized to lowercase to match the dictionary keys.
+        key = (metric['name'], metric['type'].lower())
+        existing_tcs = metric_to_existing_tcs.get(key, [])
+
+        # The counts for the main grid should ONLY reflect existing coverage.
+        regions = {tc['region'] for tc in existing_tcs if tc.get('region')}
+        engines = {tc['engine'] for tc in existing_tcs if tc.get('engine')}
+
+        data_point = {
+            'metric_name': metric['name'],
+            'metric_type': metric['type'], # Keep original case for display
+            'tcid_count': len(existing_tcs),
+            'region_count': len(regions),
+            'engine_count': len(engines)
+        }
+        planning_data.append(data_point)
+
+        # Log the data for the first few metrics to verify
+        if len(planning_data) <= 5:
+            logging.debug(f"Built data point: {data_point}")
+
+    logging.debug("--- Finished planning() route ---")
     return render_template(
         'planning.html',
         planning_data=planning_data,
@@ -441,7 +485,7 @@ def update_planning_entry():
     data = request.get_json()
     action = data.get('action')
     metric_name = data.get('metric_name')
-    metric_type = data.get('metric_type') # Now passed from frontend
+    metric_type = data.get('metric_type')  # Now passed from frontend
 
     if not metric_name or not metric_type:
         return jsonify({'success': False, 'error': 'Metric name and type are required.'}), 400
@@ -483,7 +527,8 @@ def update_planning_entry():
                 new_tc_id = data.get('new_tc_id')
 
                 if not new_tc_id:
-                    return jsonify({'success': False, 'error': 'A valid TC ID is required to promote to coverage.'}), 400
+                    return jsonify(
+                        {'success': False, 'error': 'A valid TC ID is required to promote to coverage.'}), 400
 
                 plan = cursor.execute("SELECT * FROM planning WHERE planning_id = ?", (planning_id,)).fetchone()
                 if not plan:
@@ -506,7 +551,7 @@ def update_planning_entry():
                         (coverage_id, plan['metric_name'], plan['metric_type'], plan['region'], plan['engine'])
                     )
                 except sqlite3.IntegrityError:
-                    pass # Already exists, which is fine.
+                    pass  # Already exists, which is fine.
 
                 cursor.execute("DELETE FROM planning WHERE planning_id = ?", (planning_id,))
 
@@ -604,7 +649,7 @@ def soft_delete(table_name, pk):
     try:
         with get_db_connection() as conn:
             if table_name == 'coverage':
-                 conn.execute(f"UPDATE {target_table} SET is_deleted = TRUE WHERE {pk_column} = ?", (pk,))
+                conn.execute(f"UPDATE {target_table} SET is_deleted = TRUE WHERE {pk_column} = ?", (pk,))
             else:
                 conn.execute(f"UPDATE {target_table} SET is_deleted = TRUE WHERE {pk_column} = ?", (pk,))
         return jsonify({'success': True})
@@ -686,7 +731,6 @@ def add_coverage():
                 )
                 coverage_id = cursor.lastrowid
 
-            # --- CORRECTED LOGIC ---
             # Insert with the metric_type into the link table.
             for metric in metric_names:
                 try:
