@@ -109,16 +109,15 @@
                     <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
                     {{ row.metric_name }}
                 </td>
-                {# DEFINITIVE FIX 1: Display only the count of existing TCIDs from app.py #}
                 <td class="col-count tcid-count-cell">{{ row.tcid_count }}</td>
                 <td class="col-count">{{ row.region_count }}</td>
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
-                    {# DEFINITIVE FIX 2: Normalize key to lowercase for all dictionary lookups. #}
+                    {# DEFINITIVE FIX: Get priority directly from the row object. #}
                     <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
-                        <option value="-" {% if not metric_to_priority.get((row.metric_name, row.metric_type.lower())) %}selected{% endif %}>-</option>
+                        <option value="-" {% if not row.priority %}selected{% endif %}>-</option>
                         {% for i in range(1, 6) %}
-                        <option value="P{{i}}" {% if metric_to_priority.get((row.metric_name, row.metric_type.lower())) == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
+                        <option value="P{{i}}" {% if row.priority == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
                         {% endfor %}
                     </select>
                 </td>
@@ -131,7 +130,6 @@
                                 <tr><th>Engine</th><th>Region</th><th>TC ID</th><th>Actions</th></tr>
                             </thead>
                             <tbody>
-                                {# DEFINITIVE FIX 3: Combine, sort, and display existing and planned entries. #}
                                 {% set existing = metric_to_existing_tcs.get((row.metric_name, row.metric_type.lower()), []) %}
                                 {% set planned = metric_to_planned_tcs.get((row.metric_name, row.metric_type.lower()), []) %}
 

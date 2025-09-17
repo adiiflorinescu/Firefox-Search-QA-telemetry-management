@@ -179,6 +179,9 @@ def process_csv_upload(file, table_name, columns, redirect_url):
                             skipped_rows.append(f"Line {i} (TCID: {tc_id}): Database error - {e}")
 
                 else:  # Logic for Glean/Legacy uploads
+                    # Add 'priority' to the columns if it's not there for legacy compatibility
+                    if 'priority' not in columns:
+                        columns.append('priority')
                     placeholders = ', '.join(['?'] * len(columns))
                     sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders});"
 
@@ -390,11 +393,11 @@ def planning():
     logging.debug("--- Starting planning() route ---")
     conn = get_db_connection()
 
-    # 1. Get all metrics first. This is our base list.
+    # 1. Get all metrics first, now including their priority.
     all_metrics_query = """
-        SELECT glean_name as name, 'Glean' as type FROM glean_metrics WHERE is_deleted = FALSE
+        SELECT glean_name as name, 'Glean' as type, priority FROM glean_metrics WHERE is_deleted = FALSE
         UNION ALL
-        SELECT legacy_name as name, 'Legacy' as type FROM legacy_metrics WHERE is_deleted = FALSE
+        SELECT legacy_name as name, 'Legacy' as type, priority FROM legacy_metrics WHERE is_deleted = FALSE
     """
     all_metrics = conn.execute(all_metrics_query).fetchall()
     logging.debug(f"Step 1: Found {len(all_metrics)} total metrics.")
@@ -421,23 +424,15 @@ def planning():
     # 4a. Create dictionary for existing TCIDs.
     metric_to_existing_tcs = defaultdict(list)
     for row in coverage_data:
-        # The metric_type from the link table is already lowercase.
         key = (row['metric_name'], row['metric_type'])
         metric_to_existing_tcs[key].append(dict(row))
 
-    # 4b. Create dictionaries for planned TCIDs and priorities.
+    # 4b. Create dictionary for planned TCIDs.
     metric_to_planned_tcs = defaultdict(list)
-    metric_to_priority = {}
     for entry in planning_entries:
-        metric_type = entry['metric_type']
-        if metric_type:
-            # Normalize to lowercase to match existing_tcs keys
-            key = (entry['metric_name'], metric_type.lower())
-            if entry['priority']:
-                metric_to_priority[key] = entry['priority']
-            # A planned entry is any entry that does NOT have a TCID.
-            if not entry['tc_id']:
-                metric_to_planned_tcs[key].append(dict(entry))
+        if not entry['tc_id']:
+            key = (entry['metric_name'], entry['metric_type'].lower())
+            metric_to_planned_tcs[key].append(dict(entry))
 
     logging.debug(f"Processed {len(metric_to_existing_tcs)} metrics with existing coverage.")
     logging.debug(f"Processed {len(metric_to_planned_tcs)} metrics with planned entries.")
@@ -446,7 +441,6 @@ def planning():
     logging.debug("Step 5: Building final planning_data for template...")
     planning_data = []
     for metric in sorted(all_metrics, key=lambda x: x['name']):
-        # The key for lookup must be normalized to lowercase to match the dictionary keys.
         key = (metric['name'], metric['type'].lower())
         existing_tcs = metric_to_existing_tcs.get(key, [])
 
@@ -456,16 +450,13 @@ def planning():
 
         data_point = {
             'metric_name': metric['name'],
-            'metric_type': metric['type'], # Keep original case for display
+            'metric_type': metric['type'],
+            'priority': metric['priority'],  # Pass the priority from the metric itself
             'tcid_count': len(existing_tcs),
             'region_count': len(regions),
             'engine_count': len(engines)
         }
         planning_data.append(data_point)
-
-        # Log the data for the first few metrics to verify
-        if len(planning_data) <= 5:
-            logging.debug(f"Built data point: {data_point}")
 
     logging.debug("--- Finished planning() route ---")
     return render_template(
@@ -473,7 +464,7 @@ def planning():
         planning_data=planning_data,
         metric_to_existing_tcs=metric_to_existing_tcs,
         metric_to_planned_tcs=metric_to_planned_tcs,
-        metric_to_priority=metric_to_priority,
+        # The metric_to_priority dictionary is no longer needed
         tc_base_url=config.TC_BASE_URL,
         show_management=session.get('show_management', False)
     )
@@ -485,7 +476,7 @@ def update_planning_entry():
     data = request.get_json()
     action = data.get('action')
     metric_name = data.get('metric_name')
-    metric_type = data.get('metric_type')  # Now passed from frontend
+    metric_type = data.get('metric_type')
 
     if not metric_name or not metric_type:
         return jsonify({'success': False, 'error': 'Metric name and type are required.'}), 400
@@ -496,11 +487,15 @@ def update_planning_entry():
 
             if action == 'set_priority':
                 priority = data.get('priority')
-                cursor.execute("""
-                    INSERT INTO planning (metric_name, metric_type, priority) VALUES (?, ?, ?)
-                    ON CONFLICT(metric_name, metric_type) WHERE tc_id IS NULL
-                    DO UPDATE SET priority=excluded.priority;
-                """, (metric_name, metric_type, priority if priority != '-' else None))
+                target_table = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
+                pk_column = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+
+                cursor.execute(
+                    f"UPDATE {target_table} SET priority = ? WHERE {pk_column} = ?",
+                    (priority if priority != '-' else None, metric_name)
+                )
+                # --- DEFINITIVE FIX 1: Commit the change to the database ---
+                conn.commit()
 
             elif action == 'add_plan':
                 region = data.get('region') or None
@@ -510,17 +505,20 @@ def update_planning_entry():
                     return jsonify(
                         {'success': False, 'error': 'At least a Region or Engine is required to add a plan.'}), 400
 
+                # --- DEFINITIVE FIX 2: Remove incorrect priority logic from this block ---
                 cursor.execute("""
                     INSERT OR IGNORE INTO planning (metric_name, metric_type, tc_id, region, engine)
                     VALUES (?, ?, ?, ?, ?)
                 """, (metric_name, metric_type, None, region, engine))
 
                 new_id = cursor.lastrowid
+                conn.commit() # Commit the new planned entry
                 return jsonify({'success': True, 'new_id': new_id})
 
             elif action == 'remove_plan':
                 planning_id = data.get('planning_id')
                 cursor.execute("DELETE FROM planning WHERE planning_id = ?", (planning_id,))
+                conn.commit()
 
             elif action == 'promote_to_coverage':
                 planning_id = data.get('planning_id')
@@ -554,6 +552,7 @@ def update_planning_entry():
                     pass  # Already exists, which is fine.
 
                 cursor.execute("DELETE FROM planning WHERE planning_id = ?", (planning_id,))
+                conn.commit()
 
             return jsonify({'success': True})
 
@@ -775,6 +774,7 @@ def add_glean_metric():
         glean_name = request.form.get('glean_name')
         metric_type_form = request.form.get('metric_type') or 'Uncategorized'
         description = request.form.get('description')
+        priority = request.form.get('priority') # Get priority from form
 
         if not glean_name:
             flash("Glean Name is a required field.", 'error')
@@ -782,8 +782,8 @@ def add_glean_metric():
 
         with get_db_connection() as conn:
             conn.execute(
-                "INSERT INTO glean_metrics (glean_name, metric_type, description) VALUES (?, ?, ?)",
-                (glean_name, metric_type_form, description)
+                "INSERT INTO glean_metrics (glean_name, metric_type, description, priority) VALUES (?, ?, ?, ?)",
+                (glean_name, metric_type_form, description, priority)
             )
         flash(f"Successfully added Glean metric: {glean_name}", 'success')
     except sqlite3.IntegrityError as e:
@@ -798,6 +798,7 @@ def add_legacy_metric():
         legacy_name = request.form.get('legacy_name')
         metric_type_form = request.form.get('metric_type') or 'Uncategorized'
         description = request.form.get('description')
+        priority = request.form.get('priority') # Get priority from form
 
         if not legacy_name:
             flash("Legacy Name is a required field.", 'error')
@@ -805,8 +806,8 @@ def add_legacy_metric():
 
         with get_db_connection() as conn:
             conn.execute(
-                "INSERT INTO legacy_metrics (legacy_name, metric_type, description) VALUES (?, ?, ?)",
-                (legacy_name, metric_type_form, description)
+                "INSERT INTO legacy_metrics (legacy_name, metric_type, description, priority) VALUES (?, ?, ?, ?)",
+                (legacy_name, metric_type_form, description, priority)
             )
         flash(f"Successfully added Legacy metric: {legacy_name}", 'success')
     except sqlite3.IntegrityError as e:
@@ -820,7 +821,7 @@ def upload_glean_csv():
     return process_csv_upload(
         request.files.get('file'),
         'glean_metrics',
-        ['glean_name', 'metric_type', 'expiration', 'description', 'search_metric', 'legacy_correspondent'],
+        ['glean_name', 'metric_type', 'expiration', 'description', 'search_metric', 'legacy_correspondent', 'priority'],
         url_for('index')
     )
 
@@ -831,7 +832,7 @@ def upload_legacy_csv():
     return process_csv_upload(
         request.files.get('file'),
         'legacy_metrics',
-        ['legacy_name', 'metric_type', 'expiration', 'description', 'search_metric', 'glean_correspondent'],
+        ['legacy_name', 'metric_type', 'expiration', 'description', 'search_metric', 'glean_correspondent', 'priority'],
         url_for('index')
     )
 
