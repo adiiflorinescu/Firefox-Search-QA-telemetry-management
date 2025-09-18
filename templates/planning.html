@@ -67,10 +67,11 @@
 
 <div class="container">
     <nav>
-        <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
-        <a href="{{ url_for('metrics') }}">View Metrics</a>
-        <a href="{{ url_for('reports') }}">Metric Reports</a>
-        <a href="{{ url_for('planning') }}" class="active">Coverage Planning</a>
+        {# DEFINITIVE FIX: Use the correct endpoint 'management.index' #}
+        <a href="{{ url_for('management.index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
+        <a href="{{ url_for('main.metrics') }}">View Metrics</a>
+        <a href="{{ url_for('main.reports') }}">Metric Reports</a>
+        <a href="{{ url_for('planning.view_planning') }}" class="active">Coverage Planning</a>
     </nav>
 
     <h1>Coverage Planning</h1>
@@ -113,7 +114,6 @@
                 <td class="col-count">{{ row.region_count }}</td>
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
-                    {# DEFINITIVE FIX: Get priority directly from the row object. #}
                     <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
                         <option value="-" {% if not row.priority %}selected{% endif %}>-</option>
                         {% for i in range(1, 6) %}
@@ -291,7 +291,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function updatePlanning(payload) {
         try {
-            const response = await fetch("{{ url_for('update_planning_entry') }}", {
+            {# DEFINITIVE FIX: Use the correct endpoint 'planning.update_planning_entry' #}
+            const response = await fetch("{{ url_for('planning.update_planning_entry') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

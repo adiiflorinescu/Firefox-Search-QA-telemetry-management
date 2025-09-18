@@ -17,7 +17,6 @@ def create_tables(cursor):
     """Creates the database tables with foreign key relationships."""
     print("Creating tables...")
 
-    # --- CORRECTED SCHEMA: Added 'priority' column ---
     sql_create_glean_table = """
     CREATE TABLE glean_metrics (
         glean_name TEXT PRIMARY KEY,
@@ -26,13 +25,12 @@ def create_tables(cursor):
         description TEXT,
         search_metric BOOLEAN,
         legacy_correspondent TEXT,
-        priority TEXT, -- ADDED
+        priority TEXT,
         is_deleted BOOLEAN DEFAULT FALSE,
         created_at DATETIME DEFAULT (datetime('now')),
         updated_at DATETIME DEFAULT (datetime('now'))
     );
     """
-    # --- CORRECTED SCHEMA: Added 'priority' column ---
     sql_create_legacy_table = """
     CREATE TABLE legacy_metrics (
         legacy_name TEXT PRIMARY KEY,
@@ -41,13 +39,12 @@ def create_tables(cursor):
         description TEXT,
         search_metric BOOLEAN,
         glean_correspondent TEXT,
-        priority TEXT, -- ADDED
+        priority TEXT,
         is_deleted BOOLEAN DEFAULT FALSE,
         created_at DATETIME DEFAULT (datetime('now')),
         updated_at DATETIME DEFAULT (datetime('now'))
     );
     """
-    # The coverage table stores the unique TCID and its title.
     sql_create_coverage_table = """
     CREATE TABLE coverage (
         coverage_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,8 +55,6 @@ def create_tables(cursor):
         updated_at DATETIME DEFAULT (datetime('now'))
     );
     """
-
-    # The link table now includes metric_type to ensure uniqueness.
     sql_create_link_table = """
     CREATE TABLE coverage_to_metric_link (
         link_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,8 +68,6 @@ def create_tables(cursor):
         UNIQUE(coverage_id, metric_name, metric_type, region, engine)
     );
     """
-
-    # --- CORRECTED SCHEMA: Removed 'priority' column ---
     sql_create_planning_table = """
     CREATE TABLE planning (
         planning_id INTEGER PRIMARY KEY AUTOINCREMENT,

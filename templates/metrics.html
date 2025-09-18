@@ -110,10 +110,11 @@
 
 <div class="container">
     <nav>
-    <a href="{{ url_for('index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
-    <a href="{{ url_for('metrics') }}" class="active">View Metrics</a>
-    <a href="{{ url_for('reports') }}">Metric Reports</a>
-    <a href="{{ url_for('planning') }}">Coverage Planning</a>
+    {# DEFINITIVE FIX: Use the correct endpoint 'management.index' #}
+    <a href="{{ url_for('management.index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
+    <a href="{{ url_for('main.metrics') }}" class="active">View Metrics</a>
+    <a href="{{ url_for('main.reports') }}">Metric Reports</a>
+    <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
     </nav>
 
     <h1>Metrics Data</h1>
@@ -353,7 +354,8 @@
             }
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
                 event.preventDefault();
-                fetch("{{ url_for('toggle_management_view') }}", {
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.toggle_management_view' #}
+                fetch("{{ url_for('management.toggle_management_view') }}", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 })

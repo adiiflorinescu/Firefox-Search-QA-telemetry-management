@@ -77,10 +77,11 @@
 
 <div class="container">
     <nav>
-    <a href="{{ url_for('index') }}" id="nav-data-management" class="active {% if not show_management %}hidden{% endif %}">Data Management</a>
-    <a href="{{ url_for('metrics') }}">View Metrics</a>
-    <a href="{{ url_for('reports') }}">Metric Reports</a>
-    <a href="{{ url_for('planning') }}">Coverage Planning</a>
+    {# DEFINITIVE FIX: Use the correct endpoint 'management.index' #}
+    <a href="{{ url_for('management.index') }}" id="nav-data-management" class="active {% if not show_management %}hidden{% endif %}">Data Management</a>
+    <a href="{{ url_for('main.metrics') }}">View Metrics</a>
+    <a href="{{ url_for('main.reports') }}">Metric Reports</a>
+    <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
     </nav>
 
     <h1>Data Management</h1>
@@ -101,7 +102,8 @@
         <div class="form-grid-container">
             <div class="form-section">
                 <h3>Create New Coverage Entry</h3>
-                <form action="{{ url_for('add_coverage') }}" method="post">
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.add_coverage' #}
+                <form action="{{ url_for('management.add_coverage') }}" method="post">
                     <label for="tc_id">Test Case ID</label>
                     <input type="text" id="tc_id" name="tc_id" required>
                     <label for="tcid_title">TCID Title (Optional)</label>
@@ -128,7 +130,8 @@
             </div>
             <div class="form-section">
                 <h3>Upload Coverage from CSV</h3>
-                <form action="{{ url_for('upload_coverage_csv') }}" method="post" enctype="multipart/form-data">
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.upload_coverage_csv' #}
+                <form action="{{ url_for('management.upload_coverage_csv') }}" method="post" enctype="multipart/form-data">
                     <!-- MODIFIED: Updated instructions for the new columns -->
                     <p>Upload a CSV with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>, <code>metric_type</code>, <code>region</code>, <code>engine</code>.</p>
                     <p>The 'metric_type' column must contain 'glean' or 'legacy'.</p>
@@ -149,7 +152,8 @@
         <div class="form-grid-container">
             <div class="form-section">
                 <h3>Add New Glean Metric</h3>
-                <form action="{{ url_for('add_glean_metric') }}" method="post">
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.add_glean_metric' #}
+                <form action="{{ url_for('management.add_glean_metric') }}" method="post">
                     <label for="glean_name">Glean Name</label>
                     <input type="text" id="glean_name" name="glean_name" required>
                     <label for="metric_type">Metric Type (Optional)</label>
@@ -162,7 +166,8 @@
             <div class="form-section">
                 <h3>Upload Glean Metrics from CSV</h3>
                 <p>Upload a CSV with columns: <code>glean_name</code>, <code>metric_type</code>, <code>expiration</code>, <code>description</code>, <code>search_metric</code>, <code>legacy_correspondent</code>.</p>
-                <form action="{{ url_for('upload_glean_csv') }}" method="post" enctype="multipart/form-data">
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.upload_glean_csv' #}
+                <form action="{{ url_for('management.upload_glean_csv') }}" method="post" enctype="multipart/form-data">
                     <input type="file" name="file" accept=".csv" required>
                     <button type="submit">Upload Glean CSV</button>
                 </form>
@@ -177,7 +182,8 @@
         <div class="form-grid-container">
             <div class="form-section">
                 <h3>Add New Legacy Metric</h3>
-                <form action="{{ url_for('add_legacy_metric') }}" method="post">
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.add_legacy_metric' #}
+                <form action="{{ url_for('management.add_legacy_metric') }}" method="post">
                     <label for="legacy_name">Legacy Name</label>
                     <input type="text" id="legacy_name" name="legacy_name" required>
                     <label for="metric_type_legacy">Metric Type (Optional)</label>
@@ -190,7 +196,8 @@
             <div class="form-section">
                 <h3>Upload Legacy Metrics from CSV</h3>
                 <p>Upload a CSV with columns: <code>legacy_name</code>, <code>metric_type</code>, <code>expiration</code>, <code>description</code>, <code>search_metric</code>, <code>glean_correspondent</code>.</p>
-                <form action="{{ url_for('upload_legacy_csv') }}" method="post" enctype="multipart/form-data">
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.upload_legacy_csv' #}
+                <form action="{{ url_for('management.upload_legacy_csv') }}" method="post" enctype="multipart/form-data">
                     <input type="file" name="file" accept=".csv" required>
                     <button type="submit">Upload Legacy CSV</button>
                 </form>
@@ -206,7 +213,8 @@
             <h3>Upload Test Case CSV to Extract Probes</h3>
             <p>Upload a CSV file (e.g., <code>extract_data.csv</code>) with columns: <code>ID</code>, <code>Title</code>, <code>Steps</code>, and <code>Steps (Expected Result)</code>.</p>
             <p>The tool will find all telemetry probes and return a new CSV with a "Found Probes" column appended.</p>
-            <form action="{{ url_for('extract_probes') }}" method="post" enctype="multipart/form-data">
+            {# DEFINITIVE FIX: Use the correct endpoint 'management.extract_probes' #}
+            <form action="{{ url_for('management.extract_probes') }}" method="post" enctype="multipart/form-data">
                 <input type="file" name="file" accept=".csv" required>
                 <button type="submit">Extract Probes</button>
             </form>
@@ -290,7 +298,8 @@
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
                 event.preventDefault();
                 // Call the backend to toggle the session variable
-                fetch("{{ url_for('toggle_management_view') }}", {
+                {# DEFINITIVE FIX: Use the correct endpoint 'management.toggle_management_view' #}
+                fetch("{{ url_for('management.toggle_management_view') }}", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 })
