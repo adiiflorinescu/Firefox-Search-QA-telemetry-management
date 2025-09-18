@@ -2,6 +2,8 @@
 
 from flask import Blueprint, render_template, session, jsonify, current_app
 from ..services import database as db
+# This import was causing the error and is not needed here.
+# from ..utils.template_filters import sort_details_by_tcid
 
 bp = Blueprint('main', __name__)
 
@@ -72,5 +74,7 @@ def strip_tcid_prefix(tcid):
 @bp.app_template_filter()
 def sort_details(details):
     """A template filter to sort coverage details by TCID numerically."""
-    from ..utils.template_filters import sort_details_by_tcid
-    return sort_details_by_tcid(details)
+    # The actual function is registered globally in app/__init__.py
+    # This is just a local registration that can be removed if desired.
+    from ..utils.template_filters import sort_details as sort_func
+    return sort_func(details)
