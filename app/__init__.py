@@ -7,12 +7,6 @@ from dotenv import load_dotenv
 
 def create_app():
     """Create and configure an instance of the Flask application."""
-
-    # --- DEFINITIVE FIX ---
-    # Tell Flask where to find the templates folder.
-    # The path is constructed relative to this __init__.py file:
-    # '..' goes up from 'app/' to 'pythonProject/'
-    # 'templates' goes into the correct folder.
     app = Flask(__name__,
                 instance_relative_config=True,
                 template_folder='../templates')
@@ -23,7 +17,6 @@ def create_app():
         load_dotenv(dotenv_path)
 
     app.config.from_object('config')
-
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-default-secret-key-for-dev-only')
     app.config['DATABASE'] = os.path.join(app.instance_path, 'metrics.db')
 
@@ -31,6 +24,10 @@ def create_app():
         os.makedirs(app.instance_path)
     except OSError:
         pass
+
+    # --- Initialize Database ---
+    from . import db
+    db.init_app(app)
 
     # --- Register Blueprints (Routes) ---
     from .routes import main, planning, management

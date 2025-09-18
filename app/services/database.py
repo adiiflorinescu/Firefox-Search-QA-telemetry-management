@@ -5,14 +5,15 @@ import re
 from flask import current_app
 from collections import defaultdict
 from itertools import product
+from app.db import get_db # Import the new get_db function
 
 
 def get_db_connection():
-    """Creates a connection to the SQLite database."""
-    conn = sqlite3.connect(current_app.config['DATABASE'])
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    """
+    DEPRECATED: This function is replaced by the app-context-aware get_db().
+    Keeping it here to avoid breaking old code, but new code should use get_db().
+    """
+    return get_db()
 
 
 # --- Helper to be used internally ---
@@ -37,14 +38,14 @@ def _get_all_metric_types(conn):
 
 def get_glean_metrics():
     """Fetches all non-deleted Glean metrics."""
-    with get_db_connection() as conn:
-        return conn.execute('SELECT * FROM glean_metrics WHERE is_deleted = FALSE ORDER BY glean_name').fetchall()
+    conn = get_db()
+    return conn.execute('SELECT * FROM glean_metrics WHERE is_deleted = FALSE ORDER BY glean_name').fetchall()
 
 
 def get_legacy_metrics():
     """Fetches all non-deleted Legacy metrics."""
-    with get_db_connection() as conn:
-        return conn.execute('SELECT * FROM legacy_metrics WHERE is_deleted = FALSE ORDER BY legacy_name').fetchall()
+    conn = get_db()
+    return conn.execute('SELECT * FROM legacy_metrics WHERE is_deleted = FALSE ORDER BY legacy_name').fetchall()
 
 
 def get_all_coverage_details():
@@ -52,8 +53,6 @@ def get_all_coverage_details():
     Fetches and groups all coverage data for the main metrics view.
     Also returns a list of all distinct metric types for filtering.
     """
-    # This query is now more complex to join and get the specific metric type
-    # from the source tables (glean_metrics, legacy_metrics) for accurate filtering.
     query = """
         WITH MetricDetails AS (
             SELECT
@@ -88,9 +87,9 @@ def get_all_coverage_details():
                  CASE WHEN md.engine IS NULL OR md.engine = '' or md.engine = 'NoEngine' THEN 1 ELSE 0 END, md.engine,
                  CASE WHEN md.region IS NULL OR md.region = '' or md.region = 'NoRegion' THEN 1 ELSE 0 END, md.region;
     """
-    with get_db_connection() as conn:
-        raw_data = conn.execute(query).fetchall()
-        sorted_metric_types = _get_all_metric_types(conn)
+    conn = get_db()
+    raw_data = conn.execute(query).fetchall()
+    sorted_metric_types = _get_all_metric_types(conn)
 
     coverage_grouped = defaultdict(lambda: {'region_count': 0, 'engine_count': 0, 'details': [], 'specific_metric_type': 'N/A'})
     for row in raw_data:
@@ -109,36 +108,36 @@ def get_all_coverage_details():
 
 def get_report_data():
     """Fetches aggregated data for the reports page."""
-    with get_db_connection() as conn:
-        query = """
-            SELECT metric_name, metric_type, COUNT(link_id) as tcid_count
-            FROM coverage_to_metric_link WHERE is_deleted = FALSE
-            GROUP BY metric_name, metric_type ORDER BY metric_name, metric_type;
-        """
-        report_data = conn.execute(query).fetchall()
-        metric_types = _get_all_metric_types(conn)
+    conn = get_db()
+    query = """
+        SELECT metric_name, metric_type, COUNT(link_id) as tcid_count
+        FROM coverage_to_metric_link WHERE is_deleted = FALSE
+        GROUP BY metric_name, metric_type ORDER BY metric_name, metric_type;
+    """
+    report_data = conn.execute(query).fetchall()
+    metric_types = _get_all_metric_types(conn)
     return report_data, metric_types
 
 
 def get_planning_page_data():
     """Fetches and processes all data needed for the coverage planning page."""
-    with get_db_connection() as conn:
-        all_metrics = conn.execute("""
-            SELECT glean_name as name, 'Glean' as type, priority, notes, metric_type as specific_metric_type
-            FROM glean_metrics WHERE is_deleted = FALSE
-            UNION ALL
-            SELECT legacy_name as name, 'Legacy' as type, priority, notes, metric_type as specific_metric_type
-            FROM legacy_metrics WHERE is_deleted = FALSE
-        """).fetchall()
+    conn = get_db()
+    all_metrics = conn.execute("""
+        SELECT glean_name as name, 'Glean' as type, priority, notes, metric_type as specific_metric_type
+        FROM glean_metrics WHERE is_deleted = FALSE
+        UNION ALL
+        SELECT legacy_name as name, 'Legacy' as type, priority, notes, metric_type as specific_metric_type
+        FROM legacy_metrics WHERE is_deleted = FALSE
+    """).fetchall()
 
-        coverage_data = conn.execute("""
-            SELECT c.tc_id, l.metric_name, l.metric_type, l.region, l.engine
-            FROM coverage c JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
-            WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE;
-        """).fetchall()
+    coverage_data = conn.execute("""
+        SELECT c.tc_id, l.metric_name, l.metric_type, l.region, l.engine
+        FROM coverage c JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
+        WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE;
+    """).fetchall()
 
-        planning_entries = conn.execute("SELECT * FROM planning WHERE is_deleted = FALSE").fetchall()
-        metric_types = _get_all_metric_types(conn)
+    planning_entries = conn.execute("SELECT * FROM planning WHERE is_deleted = FALSE").fetchall()
+    metric_types = _get_all_metric_types(conn)
 
     metric_to_existing_tcs = defaultdict(list)
     for row in coverage_data:
@@ -175,29 +174,29 @@ def get_metric_to_tcid_map():
         WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE;
     """
     metric_to_tcids = defaultdict(list)
-    with get_db_connection() as conn:
-        for row in conn.execute(query).fetchall():
-            key = (row['metric_name'], row['metric_type'])
-            tcid_info = (row['tc_id'], row['tcid_title'], row['region'], row['engine'])
-            metric_to_tcids[key].append(tcid_info)
+    conn = get_db()
+    for row in conn.execute(query).fetchall():
+        key = (row['metric_name'], row['metric_type'])
+        tcid_info = (row['tc_id'], row['tcid_title'], row['region'], row['engine'])
+        metric_to_tcids[key].append(tcid_info)
     return metric_to_tcids
 
 
 def get_general_stats():
     """Fetches general statistics for the reports dashboard."""
-    with get_db_connection() as conn:
-        return {
-            'total_glean_metrics':
-                conn.execute("SELECT COUNT(*) FROM glean_metrics WHERE is_deleted = FALSE").fetchone()[0],
-            'total_legacy_metrics':
-                conn.execute("SELECT COUNT(*) FROM legacy_metrics WHERE is_deleted = FALSE").fetchone()[0],
-            'glean_covered_tcs': conn.execute(
-                "SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'glean'").fetchone()[
-                0],
-            'legacy_covered_tcs': conn.execute(
-                "SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'legacy'").fetchone()[
-                0]
-        }
+    conn = get_db()
+    return {
+        'total_glean_metrics':
+            conn.execute("SELECT COUNT(*) FROM glean_metrics WHERE is_deleted = FALSE").fetchone()[0],
+        'total_legacy_metrics':
+            conn.execute("SELECT COUNT(*) FROM legacy_metrics WHERE is_deleted = FALSE").fetchone()[0],
+        'glean_covered_tcs': conn.execute(
+            "SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'glean'").fetchone()[
+            0],
+        'legacy_covered_tcs': conn.execute(
+            "SELECT COUNT(DISTINCT coverage_id) FROM coverage_to_metric_link WHERE metric_type = 'legacy'").fetchone()[
+            0]
+    }
 
 
 def update_planning_entry(data):
@@ -206,49 +205,49 @@ def update_planning_entry(data):
     metric_name = data.get('metric_name')
     metric_type = data.get('metric_type')
 
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        target_table = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
-        pk_column = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+    conn = get_db()
+    cursor = conn.cursor()
+    target_table = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
+    pk_column = 'glean_name' if metric_type == 'glean' else 'legacy_name'
 
-        if action == 'set_priority':
-            cursor.execute(f"UPDATE {target_table} SET priority = ? WHERE {pk_column} = ?",
-                           (data.get('priority') if data.get('priority') != '-' else None, metric_name))
-        elif action == 'save_notes':
-            cursor.execute(f"UPDATE {target_table} SET notes = ? WHERE {pk_column} = ?",
-                           (data.get('notes'), metric_name))
-        elif action == 'add_plan':
-            cursor.execute(
-                "INSERT OR IGNORE INTO planning (metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?)",
-                (metric_name, metric_type, data.get('region') or None, data.get('engine') or None))
-            conn.commit()
-            return {'success': True, 'new_id': cursor.lastrowid}
-        elif action == 'remove_plan':
-            cursor.execute("DELETE FROM planning WHERE planning_id = ?", (data.get('planning_id'),))
-        elif action == 'promote_to_coverage':
-            plan = cursor.execute("SELECT * FROM planning WHERE planning_id = ?", (data.get('planning_id'),)).fetchone()
-            if not plan: return {'success': False, 'error': 'Planning entry not found.'}
-
-            clean_tc_id = _strip_tcid_prefix(data.get('new_tc_id'))
-
-            coverage_entry = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?",
-                                            (clean_tc_id,)).fetchone()
-            if coverage_entry:
-                coverage_id = coverage_entry['coverage_id']
-            else:
-                cursor.execute("INSERT INTO coverage (tc_id) VALUES (?)", (clean_tc_id,))
-                coverage_id = cursor.lastrowid
-
-            try:
-                cursor.execute(
-                    "INSERT INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
-                    (coverage_id, plan['metric_name'], plan['metric_type'], plan['region'], plan['engine']))
-            except sqlite3.IntegrityError:
-                pass
-
-            cursor.execute("DELETE FROM planning WHERE planning_id = ?", (data.get('planning_id'),))
-
+    if action == 'set_priority':
+        cursor.execute(f"UPDATE {target_table} SET priority = ? WHERE {pk_column} = ?",
+                       (data.get('priority') if data.get('priority') != '-' else None, metric_name))
+    elif action == 'save_notes':
+        cursor.execute(f"UPDATE {target_table} SET notes = ? WHERE {pk_column} = ?",
+                       (data.get('notes'), metric_name))
+    elif action == 'add_plan':
+        cursor.execute(
+            "INSERT OR IGNORE INTO planning (metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?)",
+            (metric_name, metric_type, data.get('region') or None, data.get('engine') or None))
         conn.commit()
+        return {'success': True, 'new_id': cursor.lastrowid}
+    elif action == 'remove_plan':
+        cursor.execute("DELETE FROM planning WHERE planning_id = ?", (data.get('planning_id'),))
+    elif action == 'promote_to_coverage':
+        plan = cursor.execute("SELECT * FROM planning WHERE planning_id = ?", (data.get('planning_id'),)).fetchone()
+        if not plan: return {'success': False, 'error': 'Planning entry not found.'}
+
+        clean_tc_id = _strip_tcid_prefix(data.get('new_tc_id'))
+
+        coverage_entry = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?",
+                                        (clean_tc_id,)).fetchone()
+        if coverage_entry:
+            coverage_id = coverage_entry['coverage_id']
+        else:
+            cursor.execute("INSERT INTO coverage (tc_id) VALUES (?)", (clean_tc_id,))
+            coverage_id = cursor.lastrowid
+
+        try:
+            cursor.execute(
+                "INSERT INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
+                (coverage_id, plan['metric_name'], plan['metric_type'], plan['region'], plan['engine']))
+        except sqlite3.IntegrityError:
+            pass
+
+        cursor.execute("DELETE FROM planning WHERE planning_id = ?", (data.get('planning_id'),))
+
+    conn.commit()
     return {'success': True}
 
 
@@ -265,12 +264,12 @@ def add_single_metric(metric_type, form_data):
         return False, f"{metric_type.capitalize()} Name is a required field."
 
     try:
-        with get_db_connection() as conn:
-            conn.execute(
-                f"INSERT INTO {table_name} ({name_col}, metric_type, description, priority) VALUES (?, ?, ?, ?)",
-                (metric_name, metric_cat, description, priority)
-            )
-            conn.commit()
+        conn = get_db()
+        conn.execute(
+            f"INSERT INTO {table_name} ({name_col}, metric_type, description, priority) VALUES (?, ?, ?, ?)",
+            (metric_name, metric_cat, description, priority)
+        )
+        conn.commit()
         return True, f"Successfully added {metric_type.capitalize()} metric: {metric_name}"
     except sqlite3.IntegrityError as e:
         return False, f"Error adding {metric_type.capitalize()} metric: {e}"
@@ -303,36 +302,36 @@ def add_coverage_entry(form_data):
         engines = [None]
 
     try:
-        with get_db_connection() as conn:
-            val_table_name = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
-            val_column_name = 'glean_name' if metric_type == 'glean' else 'legacy_name'
-            for metric in metric_names:
-                metric_exists = conn.execute(
-                    f"SELECT 1 FROM {val_table_name} WHERE {val_column_name} = ? AND is_deleted = FALSE",
-                    (metric,)
-                ).fetchone()
-                if not metric_exists:
-                    return False, f"Error: The {metric_type} metric '{metric}' does not exist. Please add it first."
+        conn = get_db()
+        val_table_name = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
+        val_column_name = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+        for metric in metric_names:
+            metric_exists = conn.execute(
+                f"SELECT 1 FROM {val_table_name} WHERE {val_column_name} = ? AND is_deleted = FALSE",
+                (metric,)
+            ).fetchone()
+            if not metric_exists:
+                return False, f"Error: The {metric_type} metric '{metric}' does not exist. Please add it first."
 
-            coverage_entry = conn.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?", (tc_id,)).fetchone()
-            if coverage_entry:
-                coverage_id = coverage_entry['coverage_id']
-                conn.execute("UPDATE coverage SET tcid_title = ? WHERE coverage_id = ?",
-                             (form_data.get('tcid_title') or None, coverage_id))
-            else:
-                cursor = conn.execute("INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
-                                      (tc_id, form_data.get('tcid_title') or None))
-                coverage_id = cursor.lastrowid
+        coverage_entry = conn.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?", (tc_id,)).fetchone()
+        if coverage_entry:
+            coverage_id = coverage_entry['coverage_id']
+            conn.execute("UPDATE coverage SET tcid_title = ? WHERE coverage_id = ?",
+                         (form_data.get('tcid_title') or None, coverage_id))
+        else:
+            cursor = conn.execute("INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
+                                  (tc_id, form_data.get('tcid_title') or None))
+            coverage_id = cursor.lastrowid
 
-            all_combinations = product(metric_names, regions, engines)
+        all_combinations = product(metric_names, regions, engines)
 
-            for metric_name, region, engine in all_combinations:
-                conn.execute("""
-                    INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine)
-                    VALUES (?, ?, ?, ?, ?)""",
-                             (coverage_id, metric_name, metric_type, region, engine))
+        for metric_name, region, engine in all_combinations:
+            conn.execute("""
+                INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine)
+                VALUES (?, ?, ?, ?, ?)""",
+                         (coverage_id, metric_name, metric_type, region, engine))
 
-            conn.commit()
+        conn.commit()
         return True, f"Successfully added/updated coverage for TC ID '{tc_id}'."
     except sqlite3.Error as e:
         current_app.logger.error(f"Database error in add_coverage_entry: {e}")
@@ -344,23 +343,23 @@ def soft_delete_item(table_name, pk):
     pk_columns = {'glean_metrics': 'glean_name', 'legacy_metrics': 'legacy_name'}
     if table_name not in pk_columns: return False
 
-    with get_db_connection() as conn:
-        conn.execute(f"UPDATE {table_name} SET is_deleted = TRUE WHERE {pk_columns[table_name]} = ?", (pk,))
-        conn.commit()
+    conn = get_db()
+    conn.execute(f"UPDATE {table_name} SET is_deleted = TRUE WHERE {pk_columns[table_name]} = ?", (pk,))
+    conn.commit()
     return True
 
 
 def get_search_suggestions(suggestion_type):
     """Provides a JSON list of search terms for autofill."""
-    with get_db_connection() as conn:
-        suggestions = []
-        if suggestion_type in ['all', 'glean', 'metrics']:
-            suggestions.extend([r['glean_name'] for r in
-                                conn.execute('SELECT glean_name FROM glean_metrics WHERE is_deleted = FALSE')])
-        if suggestion_type in ['all', 'legacy', 'metrics']:
-            suggestions.extend([r['legacy_name'] for r in
-                                conn.execute('SELECT legacy_name FROM legacy_metrics WHERE is_deleted = FALSE')])
-        if suggestion_type == 'all':
-            suggestions.extend(
-                [r['tc_id'] for r in conn.execute('SELECT DISTINCT tc_id FROM coverage WHERE is_deleted = FALSE')])
+    conn = get_db()
+    suggestions = []
+    if suggestion_type in ['all', 'glean', 'metrics']:
+        suggestions.extend([r['glean_name'] for r in
+                            conn.execute('SELECT glean_name FROM glean_metrics WHERE is_deleted = FALSE')])
+    if suggestion_type in ['all', 'legacy', 'metrics']:
+        suggestions.extend([r['legacy_name'] for r in
+                            conn.execute('SELECT legacy_name FROM legacy_metrics WHERE is_deleted = FALSE')])
+    if suggestion_type == 'all':
+        suggestions.extend(
+            [r['tc_id'] for r in conn.execute('SELECT DISTINCT tc_id FROM coverage WHERE is_deleted = FALSE')])
     return sorted(list(set(suggestions)))
