@@ -1,6 +1,7 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/services/database.py
 
 import sqlite3
+import re  # Import re for the prefix stripper
 from flask import current_app
 from collections import defaultdict
 
@@ -11,6 +12,14 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+# --- Helper to be used internally ---
+def _strip_tcid_prefix(tcid):
+    if not tcid or not isinstance(tcid, str):
+        return tcid
+    match = re.search(r'\d', tcid)
+    return tcid[match.start():] if match else tcid
 
 
 # --- Metric & Coverage Read Operations ---
@@ -169,6 +178,8 @@ def update_planning_entry(data):
             cursor.execute(
                 "INSERT OR IGNORE INTO planning (metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?)",
                 (metric_name, metric_type, data.get('region') or None, data.get('engine') or None))
+            # We must commit here to get the lastrowid
+            conn.commit()
             return {'success': True, 'new_id': cursor.lastrowid}
         elif action == 'remove_plan':
             cursor.execute("DELETE FROM planning WHERE planning_id = ?", (data.get('planning_id'),))
@@ -176,12 +187,15 @@ def update_planning_entry(data):
             plan = cursor.execute("SELECT * FROM planning WHERE planning_id = ?", (data.get('planning_id'),)).fetchone()
             if not plan: return {'success': False, 'error': 'Planning entry not found.'}
 
+            # --- DEFINITIVE FIX: Clean the TCID on the backend ---
+            clean_tc_id = _strip_tcid_prefix(data.get('new_tc_id'))
+
             coverage_entry = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?",
-                                            (data.get('new_tc_id'),)).fetchone()
+                                            (clean_tc_id,)).fetchone()
             if coverage_entry:
                 coverage_id = coverage_entry['coverage_id']
             else:
-                cursor.execute("INSERT INTO coverage (tc_id) VALUES (?)", (data.get('new_tc_id'),))
+                cursor.execute("INSERT INTO coverage (tc_id) VALUES (?)", (clean_tc_id,))
                 coverage_id = cursor.lastrowid
 
             try:
@@ -254,7 +268,7 @@ def add_coverage_entry(form_data):
             if coverage_entry:
                 coverage_id = coverage_entry['coverage_id']
                 conn.execute("UPDATE coverage SET tcid_title = ? WHERE coverage_id = ?",
-                               (form_data.get('tcid_title') or None, coverage_id))
+                             (form_data.get('tcid_title') or None, coverage_id))
             else:
                 cursor = conn.execute("INSERT INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
                                       (tc_id, form_data.get('tcid_title') or None))

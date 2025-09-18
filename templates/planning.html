@@ -173,6 +173,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const table = document.getElementById('planning-table');
+    const tcBaseUrl = "{{ tc_base_url }}";
 
     // Toggle sub-table visibility
     table.addEventListener('click', function(e) {
@@ -241,8 +242,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
             updatePlanning(payload).then(data => {
                 if (data.success) {
-                    // Reload to show the new entry correctly sorted.
-                    window.location.reload();
+                    // --- START DYNAMIC ROW ADDITION ---
+                    const newRow = document.createElement('tr');
+                    newRow.classList.add('planned-entry');
+                    newRow.dataset.planningId = data.new_id;
+                    newRow.innerHTML = `
+                        <td>${payload.engine || 'NoEngine'}</td>
+                        <td>${payload.region || 'NoRegion'}</td>
+                        <td>
+                            <input type="text" class="editable-tcid" value="" placeholder="Add TC ID to promote...">
+                            <button class="save-tcid-btn">Save</button>
+                        </td>
+                        <td><span class="remove-btn">✖</span></td>
+                    `;
+                    // Insert the new row before the 'add plan' form row
+                    formRow.parentNode.insertBefore(newRow, formRow);
+                    // Clear the input fields
+                    regionInput.value = '';
+                    engineInput.value = '';
+                    // --- END DYNAMIC ROW ADDITION ---
                 }
             });
         }
@@ -258,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 planning_id: plannedRow.dataset.planningId
             }).then(data => {
                 if (data.success) {
-                    // No need to manually update count, just remove the row
+                    // --- DYNAMICALLY REMOVE ROW ---
                     plannedRow.remove();
                 }
             });
@@ -284,14 +302,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 planning_id: plannedRow.dataset.planningId,
                 new_tc_id: newTcId
             }).then(data => {
-                if (data.success) window.location.reload();
+                if (data.success) {
+                    // --- START DYNAMIC UPDATE ---
+                    // 1. Remove the 'planned' row
+                    plannedRow.remove();
+
+                    // 2. Find the main metric row to update its count
+                    const mainMetricRow = document.querySelector(`.metric-row[data-metric-name="${metricName}"][data-metric-type="${metricType}"]`);
+                    if (mainMetricRow) {
+                        const countCell = mainMetricRow.querySelector('.tcid-count-cell');
+                        const currentCount = parseInt(countCell.textContent, 10);
+                        countCell.textContent = currentCount + 1;
+                    }
+
+                    // 3. Add a new 'existing' row to the sub-table
+                    const detailsTbody = subTableRow.querySelector('tbody');
+                    const addFormRow = detailsTbody.querySelector('.add-plan-form');
+                    const newExistingRow = document.createElement('tr');
+                    // Extract region/engine from the removed planned row to build the new existing row
+                    const engine = plannedRow.cells[0].textContent;
+                    const region = plannedRow.cells[1].textContent;
+                    newExistingRow.innerHTML = `
+                        <td>${engine}</td>
+                        <td>${region}</td>
+                        <td><a href="${tcBaseUrl}${newTcId.replace(/^[a-zA-Z]+/, '')}" target="_blank">${newTcId}</a></td>
+                        <td></td>
+                    `;
+                    // Insert the new row before the 'add plan' form
+                    detailsTbody.insertBefore(newExistingRow, addFormRow);
+                    // --- END DYNAMIC UPDATE ---
+                }
             });
         }
     });
 
     async function updatePlanning(payload) {
         try {
-            {# DEFINITIVE FIX: Use the correct endpoint 'planning.update_planning_entry' #}
             const response = await fetch("{{ url_for('planning.update_planning_entry') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
