@@ -53,6 +53,7 @@ def get_all_coverage_details():
     Fetches and groups all coverage data for the main metrics view.
     Also returns a list of all distinct metric types for filtering.
     """
+    # --- DEFINITIVE FIX: Refactored query for robustness and clarity ---
     query = """
         WITH MetricDetails AS (
             SELECT
@@ -69,8 +70,13 @@ def get_all_coverage_details():
             WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE
         ),
         MetricCounts AS (
-            SELECT metric_name, general_metric_type, COUNT(DISTINCT region) as region_count, COUNT(DISTINCT engine) as engine_count
-            FROM MetricDetails GROUP BY metric_name, general_metric_type
+            SELECT
+                metric_name,
+                general_metric_type,
+                COUNT(DISTINCT region) as region_count,
+                COUNT(DISTINCT engine) as engine_count
+            FROM MetricDetails
+            GROUP BY metric_name, general_metric_type
         )
         SELECT
             mc.metric_name,
@@ -83,9 +89,12 @@ def get_all_coverage_details():
             md.engine
         FROM MetricCounts mc
         JOIN MetricDetails md ON mc.metric_name = md.metric_name AND mc.general_metric_type = md.general_metric_type
-        ORDER BY mc.metric_name, mc.general_metric_type,
-                 CASE WHEN md.engine IS NULL OR md.engine = '' or md.engine = 'NoEngine' THEN 1 ELSE 0 END, md.engine,
-                 CASE WHEN md.region IS NULL OR md.region = '' or md.region = 'NoRegion' THEN 1 ELSE 0 END, md.region;
+        ORDER BY
+            mc.metric_name,
+            mc.general_metric_type,
+            -- Use COALESCE to treat NULL/empty as a high value for sorting, putting them last
+            COALESCE(NULLIF(md.engine, ''), 'zzzz'),
+            COALESCE(NULLIF(md.region, ''), 'zzzz');
     """
     conn = get_db()
     raw_data = conn.execute(query).fetchall()

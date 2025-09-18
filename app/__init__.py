@@ -7,9 +7,17 @@ from dotenv import load_dotenv
 
 def create_app():
     """Create and configure an instance of the Flask application."""
+
+    # --- DEFINITIVE FIX: Use an absolute path for the template folder ---
+    # This ensures that templates are found regardless of how the app is run.
+    # It constructs the path to the 'app' directory...
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    # ...and then joins it with the relative path to the templates folder.
+    template_dir = os.path.join(base_dir, '../templates')
+
     app = Flask(__name__,
                 instance_relative_config=True,
-                template_folder='../templates')
+                template_folder=template_dir)
 
     # --- Load Configuration ---
     dotenv_path = os.path.join(app.instance_path, '..', '.env')
