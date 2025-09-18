@@ -1,9 +1,10 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/services/database.py
 
 import sqlite3
-import re  # Import re for the prefix stripper
+import re
 from flask import current_app
 from collections import defaultdict
+from itertools import product
 
 
 def get_db_connection():
@@ -22,7 +23,17 @@ def _strip_tcid_prefix(tcid):
     return tcid[match.start():] if match else tcid
 
 
-# --- Metric & Coverage Read Operations ---
+# --- NEW: Helper to fetch metric types ---
+def _get_all_metric_types(conn):
+    """Fetches and formats all distinct metric types from both tables."""
+    glean_types = conn.execute("SELECT DISTINCT metric_type FROM glean_metrics WHERE is_deleted = FALSE").fetchall()
+    legacy_types = conn.execute("SELECT DISTINCT metric_type FROM legacy_metrics WHERE is_deleted = FALSE").fetchall()
+
+    all_metric_types = []
+    all_metric_types.extend([{'name': row['metric_type'], 'source': 'Glean'} for row in glean_types if row['metric_type']])
+    all_metric_types.extend([{'name': row['metric_type'], 'source': 'Legacy'} for row in legacy_types if row['metric_type']])
+    return sorted(all_metric_types, key=lambda x: x['name'])
+
 
 def get_glean_metrics():
     """Fetches all non-deleted Glean metrics."""
@@ -37,51 +48,123 @@ def get_legacy_metrics():
 
 
 def get_all_coverage_details():
-    """Fetches and groups all coverage data for the main metrics view."""
+    """
+    Fetches and groups all coverage data for the main metrics view.
+    Also returns a list of all distinct metric types for filtering.
+    """
+    # This query is now more complex to join and get the specific metric type
+    # from the source tables (glean_metrics, legacy_metrics) for accurate filtering.
     query = """
         WITH MetricDetails AS (
-            SELECT l.metric_name, l.metric_type, c.tc_id, l.region, l.engine
+            SELECT
+                l.metric_name,
+                l.metric_type as general_metric_type,
+                COALESCE(gm.metric_type, lm.metric_type) as specific_metric_type,
+                c.tc_id,
+                l.region,
+                l.engine
             FROM coverage_to_metric_link l
             JOIN coverage c ON l.coverage_id = c.coverage_id
+            LEFT JOIN glean_metrics gm ON l.metric_name = gm.glean_name AND l.metric_type = 'glean'
+            LEFT JOIN legacy_metrics lm ON l.metric_name = lm.legacy_name AND l.metric_type = 'legacy'
             WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE
         ),
         MetricCounts AS (
-            SELECT metric_name, metric_type, COUNT(DISTINCT region) as region_count, COUNT(DISTINCT engine) as engine_count
-            FROM MetricDetails GROUP BY metric_name, metric_type
+            SELECT metric_name, general_metric_type, COUNT(DISTINCT region) as region_count, COUNT(DISTINCT engine) as engine_count
+            FROM MetricDetails GROUP BY metric_name, general_metric_type
         )
-        SELECT mc.metric_name, mc.metric_type, mc.region_count, mc.engine_count, md.tc_id, md.region, md.engine
+        SELECT
+            mc.metric_name,
+            mc.general_metric_type,
+            md.specific_metric_type,
+            mc.region_count,
+            mc.engine_count,
+            md.tc_id,
+            md.region,
+            md.engine
         FROM MetricCounts mc
-        JOIN MetricDetails md ON mc.metric_name = md.metric_name AND mc.metric_type = md.metric_type
-        ORDER BY mc.metric_name, mc.metric_type,
+        JOIN MetricDetails md ON mc.metric_name = md.metric_name AND mc.general_metric_type = md.general_metric_type
+        ORDER BY mc.metric_name, mc.general_metric_type,
                  CASE WHEN md.engine IS NULL OR md.engine = '' or md.engine = 'NoEngine' THEN 1 ELSE 0 END, md.engine,
                  CASE WHEN md.region IS NULL OR md.region = '' or md.region = 'NoRegion' THEN 1 ELSE 0 END, md.region;
     """
     with get_db_connection() as conn:
         raw_data = conn.execute(query).fetchall()
+        sorted_metric_types = _get_all_metric_types(conn)
 
-    coverage_grouped = defaultdict(lambda: {'region_count': 0, 'engine_count': 0, 'details': []})
+    coverage_grouped = defaultdict(lambda: {'region_count': 0, 'engine_count': 0, 'details': [], 'specific_metric_type': 'N/A'})
     for row in raw_data:
-        key = (row['metric_name'], row['metric_type'])
+        key = (row['metric_name'], row['general_metric_type'])
         metric = coverage_grouped[key]
         if not metric['details']:
             metric['region_count'] = row['region_count']
             metric['engine_count'] = row['engine_count']
+            metric['specific_metric_type'] = row['specific_metric_type'] or 'N/A'
         metric['details'].append(dict(row))
 
-    return [{'metric_name': k[0], 'metric_type': k[1], **v} for k, v in sorted(coverage_grouped.items())]
+    sorted_coverage = [{'metric_name': k[0], 'metric_type': v['specific_metric_type'], 'general_metric_type': k[1], **v} for k, v in sorted(coverage_grouped.items())]
 
+    return sorted_coverage, sorted_metric_types
 
-# --- Reports Page Operations ---
 
 def get_report_data():
     """Fetches aggregated data for the reports page."""
-    query = """
-        SELECT metric_name, metric_type, COUNT(link_id) as tcid_count
-        FROM coverage_to_metric_link WHERE is_deleted = FALSE
-        GROUP BY metric_name, metric_type ORDER BY metric_name, metric_type;
-    """
     with get_db_connection() as conn:
-        return conn.execute(query).fetchall()
+        query = """
+            SELECT metric_name, metric_type, COUNT(link_id) as tcid_count
+            FROM coverage_to_metric_link WHERE is_deleted = FALSE
+            GROUP BY metric_name, metric_type ORDER BY metric_name, metric_type;
+        """
+        report_data = conn.execute(query).fetchall()
+        metric_types = _get_all_metric_types(conn)
+    return report_data, metric_types
+
+
+def get_planning_page_data():
+    """Fetches and processes all data needed for the coverage planning page."""
+    with get_db_connection() as conn:
+        all_metrics = conn.execute("""
+            SELECT glean_name as name, 'Glean' as type, priority, notes, metric_type as specific_metric_type
+            FROM glean_metrics WHERE is_deleted = FALSE
+            UNION ALL
+            SELECT legacy_name as name, 'Legacy' as type, priority, notes, metric_type as specific_metric_type
+            FROM legacy_metrics WHERE is_deleted = FALSE
+        """).fetchall()
+
+        coverage_data = conn.execute("""
+            SELECT c.tc_id, l.metric_name, l.metric_type, l.region, l.engine
+            FROM coverage c JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
+            WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE;
+        """).fetchall()
+
+        planning_entries = conn.execute("SELECT * FROM planning WHERE is_deleted = FALSE").fetchall()
+        metric_types = _get_all_metric_types(conn)
+
+    metric_to_existing_tcs = defaultdict(list)
+    for row in coverage_data:
+        metric_to_existing_tcs[(row['metric_name'], row['metric_type'])].append(dict(row))
+
+    metric_to_planned_tcs = defaultdict(list)
+    for entry in planning_entries:
+        if not entry['tc_id']:
+            metric_to_planned_tcs[(entry['metric_name'], entry['metric_type'].lower())].append(dict(entry))
+
+    planning_data = []
+    for metric in sorted(all_metrics, key=lambda x: x['name']):
+        key = (metric['name'], metric['type'].lower())
+        existing_tcs = metric_to_existing_tcs.get(key, [])
+        planning_data.append({
+            'metric_name': metric['name'],
+            'metric_type': metric['type'],
+            'specific_metric_type': metric['specific_metric_type'] or 'N/A',
+            'priority': metric['priority'],
+            'notes': metric['notes'],
+            'tcid_count': len(existing_tcs),
+            'region_count': len({tc['region'] for tc in existing_tcs if tc.get('region')}),
+            'engine_count': len({tc['engine'] for tc in existing_tcs if tc.get('engine')})
+        })
+
+    return planning_data, metric_to_existing_tcs, metric_to_planned_tcs, metric_types
 
 
 def get_metric_to_tcid_map():
@@ -117,50 +200,6 @@ def get_general_stats():
         }
 
 
-# --- Planning Page Operations ---
-
-def get_planning_page_data():
-    """Fetches and processes all data needed for the coverage planning page."""
-    with get_db_connection() as conn:
-        all_metrics = conn.execute("""
-            SELECT glean_name as name, 'Glean' as type, priority FROM glean_metrics WHERE is_deleted = FALSE
-            UNION ALL
-            SELECT legacy_name as name, 'Legacy' as type, priority FROM legacy_metrics WHERE is_deleted = FALSE
-        """).fetchall()
-
-        coverage_data = conn.execute("""
-            SELECT c.tc_id, l.metric_name, l.metric_type, l.region, l.engine
-            FROM coverage c JOIN coverage_to_metric_link l ON c.coverage_id = l.coverage_id
-            WHERE c.is_deleted = FALSE AND l.is_deleted = FALSE;
-        """).fetchall()
-
-        planning_entries = conn.execute("SELECT * FROM planning WHERE is_deleted = FALSE").fetchall()
-
-    metric_to_existing_tcs = defaultdict(list)
-    for row in coverage_data:
-        metric_to_existing_tcs[(row['metric_name'], row['metric_type'])].append(dict(row))
-
-    metric_to_planned_tcs = defaultdict(list)
-    for entry in planning_entries:
-        if not entry['tc_id']:
-            metric_to_planned_tcs[(entry['metric_name'], entry['metric_type'].lower())].append(dict(entry))
-
-    planning_data = []
-    for metric in sorted(all_metrics, key=lambda x: x['name']):
-        key = (metric['name'], metric['type'].lower())
-        existing_tcs = metric_to_existing_tcs.get(key, [])
-        planning_data.append({
-            'metric_name': metric['name'],
-            'metric_type': metric['type'],
-            'priority': metric['priority'],
-            'tcid_count': len(existing_tcs),
-            'region_count': len({tc['region'] for tc in existing_tcs if tc.get('region')}),
-            'engine_count': len({tc['engine'] for tc in existing_tcs if tc.get('engine')})
-        })
-
-    return planning_data, metric_to_existing_tcs, metric_to_planned_tcs
-
-
 def update_planning_entry(data):
     """Handles all AJAX updates from the planning page."""
     action = data.get('action')
@@ -169,16 +208,19 @@ def update_planning_entry(data):
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        target_table = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
+        pk_column = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+
         if action == 'set_priority':
-            target_table = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
-            pk_column = 'glean_name' if metric_type == 'glean' else 'legacy_name'
             cursor.execute(f"UPDATE {target_table} SET priority = ? WHERE {pk_column} = ?",
                            (data.get('priority') if data.get('priority') != '-' else None, metric_name))
+        elif action == 'save_notes':
+            cursor.execute(f"UPDATE {target_table} SET notes = ? WHERE {pk_column} = ?",
+                           (data.get('notes'), metric_name))
         elif action == 'add_plan':
             cursor.execute(
                 "INSERT OR IGNORE INTO planning (metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?)",
                 (metric_name, metric_type, data.get('region') or None, data.get('engine') or None))
-            # We must commit here to get the lastrowid
             conn.commit()
             return {'success': True, 'new_id': cursor.lastrowid}
         elif action == 'remove_plan':
@@ -187,7 +229,6 @@ def update_planning_entry(data):
             plan = cursor.execute("SELECT * FROM planning WHERE planning_id = ?", (data.get('planning_id'),)).fetchone()
             if not plan: return {'success': False, 'error': 'Planning entry not found.'}
 
-            # --- DEFINITIVE FIX: Clean the TCID on the backend ---
             clean_tc_id = _strip_tcid_prefix(data.get('new_tc_id'))
 
             coverage_entry = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?",
@@ -203,15 +244,13 @@ def update_planning_entry(data):
                     "INSERT INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
                     (coverage_id, plan['metric_name'], plan['metric_type'], plan['region'], plan['engine']))
             except sqlite3.IntegrityError:
-                pass  # Ignore if it already exists
+                pass
 
             cursor.execute("DELETE FROM planning WHERE planning_id = ?", (data.get('planning_id'),))
 
         conn.commit()
     return {'success': True}
 
-
-# --- Data Write/Delete Operations ---
 
 def add_single_metric(metric_type, form_data):
     """Adds a single new Glean or Legacy metric from form data."""
@@ -238,21 +277,33 @@ def add_single_metric(metric_type, form_data):
 
 
 def add_coverage_entry(form_data):
-    """Adds a new coverage entry and links it to metrics."""
+    """
+    Adds a new coverage entry and links it to metrics.
+    Handles comma-separated values for metrics, regions, and engines.
+    """
     tc_id = form_data.get('tc_id')
     metric_type = form_data.get('metric_type')
-    metrics_str = form_data.get('metrics')
+
+    metrics_str = form_data.get('metrics', '')
+    regions_str = form_data.get('region', '')
+    engines_str = form_data.get('engine', '')
 
     if not all([tc_id, metric_type, metrics_str]):
         return False, 'TC ID, Metric Type, and at least one Metric are required.'
 
     metric_names = [m.strip() for m in metrics_str.split(',') if m.strip()]
+    regions = [r.strip() for r in regions_str.split(',') if r.strip()]
+    engines = [e.strip() for e in engines_str.split(',') if e.strip()]
+
     if not metric_names:
         return False, 'At least one valid metric name is required.'
+    if not regions:
+        regions = [None]
+    if not engines:
+        engines = [None]
 
     try:
         with get_db_connection() as conn:
-            # Check if all metrics exist
             val_table_name = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
             val_column_name = 'glean_name' if metric_type == 'glean' else 'legacy_name'
             for metric in metric_names:
@@ -263,7 +314,6 @@ def add_coverage_entry(form_data):
                 if not metric_exists:
                     return False, f"Error: The {metric_type} metric '{metric}' does not exist. Please add it first."
 
-            # Upsert coverage entry
             coverage_entry = conn.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?", (tc_id,)).fetchone()
             if coverage_entry:
                 coverage_id = coverage_entry['coverage_id']
@@ -274,16 +324,18 @@ def add_coverage_entry(form_data):
                                       (tc_id, form_data.get('tcid_title') or None))
                 coverage_id = cursor.lastrowid
 
-            # Insert links
-            for metric in metric_names:
+            all_combinations = product(metric_names, regions, engines)
+
+            for metric_name, region, engine in all_combinations:
                 conn.execute("""
                     INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine)
                     VALUES (?, ?, ?, ?, ?)""",
-                             (coverage_id, metric, metric_type, form_data.get('region') or None,
-                              form_data.get('engine') or None))
+                             (coverage_id, metric_name, metric_type, region, engine))
+
             conn.commit()
         return True, f"Successfully added/updated coverage for TC ID '{tc_id}'."
     except sqlite3.Error as e:
+        current_app.logger.error(f"Database error in add_coverage_entry: {e}")
         return False, f"Database Error: Could not add entry. (Details: {e})"
 
 

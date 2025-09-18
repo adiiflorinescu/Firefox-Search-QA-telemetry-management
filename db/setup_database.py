@@ -26,6 +26,7 @@ def create_tables(cursor):
         search_metric BOOLEAN,
         legacy_correspondent TEXT,
         priority TEXT,
+        notes TEXT, -- <<< NEW COLUMN
         is_deleted BOOLEAN DEFAULT FALSE,
         created_at DATETIME DEFAULT (datetime('now')),
         updated_at DATETIME DEFAULT (datetime('now'))
@@ -40,6 +41,7 @@ def create_tables(cursor):
         search_metric BOOLEAN,
         glean_correspondent TEXT,
         priority TEXT,
+        notes TEXT, -- <<< NEW COLUMN
         is_deleted BOOLEAN DEFAULT FALSE,
         created_at DATETIME DEFAULT (datetime('now')),
         updated_at DATETIME DEFAULT (datetime('now'))

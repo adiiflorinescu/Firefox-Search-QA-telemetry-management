@@ -16,10 +16,18 @@
         .hidden { display: none; }
 
         .filters-container { display: flex; gap: 1rem; margin-bottom: 2rem; align-items: center; }
-        .filters-container input, .filters-container select {
+        .filters-container input, .filters-container select, .filters-container button {
             padding: 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px;
         }
         .filters-container input[type="search"] { flex-grow: 1; }
+        #reset-filters-btn {
+            background-color: #6c757d;
+            color: white;
+            cursor: pointer;
+        }
+        #reset-filters-btn:hover {
+            background-color: #5a6268;
+        }
 
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 12px; text-align: left; border: 1px solid #eef; vertical-align: middle; }
@@ -32,17 +40,42 @@
 
         .col-metric-name { word-break: break-all; }
         .col-count { width: 100px; text-align: center; }
-        .col-priority { width: 120px; }
-        .col-priority select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; }
+        .col-priority { width: 150px; }
+        .col-priority > div { display: flex; align-items: center; gap: 10px; }
+        .col-priority select { flex-grow: 1; padding: 8px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; }
 
-        /* Sub-table styles */
+        .notes-icon {
+            font-size: 1.2rem;
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+        .notes-icon:hover { opacity: 1; }
+        .notes-icon.active { color: #2c5282; opacity: 1; }
+
         .details-container { padding: 1rem; background-color: #fdfdff; }
         .details-table { font-size: 0.9em; }
         .details-table th, .details-table td { padding: 8px; }
         .planned-entry { background-color: #fffbea !important; font-style: italic; color: #92400e; }
         .remove-btn { cursor: pointer; color: #c53030; font-weight: bold; }
 
-        /* Styles for editable TCID and save button */
+        .notes-section {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px dashed #ccc;
+        }
+        .notes-section h4 { margin: 0 0 0.5rem 0; font-size: 1em; color: #333; }
+        .notes-section textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 8px;
+            font-size: 1em;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+
         .editable-tcid {
             width: 120px;
             padding: 4px;
@@ -58,7 +91,6 @@
             cursor: pointer;
         }
 
-        /* Styles for the add form */
         .add-plan-form input { padding: 6px; font-size: 0.9em; border: 1px solid #ccc; border-radius: 4px; }
         .add-plan-form button { padding: 6px 10px; font-size: 0.9em; cursor: pointer; }
     </style>
@@ -67,7 +99,6 @@
 
 <div class="container">
     <nav>
-        {# DEFINITIVE FIX: Use the correct endpoint 'management.index' #}
         <a href="{{ url_for('management.index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
         <a href="{{ url_for('main.metrics') }}">View Metrics</a>
         <a href="{{ url_for('main.reports') }}">Metric Reports</a>
@@ -78,6 +109,14 @@
 
     <div class="filters-container">
         <input type="search" id="search-field" placeholder="Search for metrics...">
+
+        <input type="text" id="metric-type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
+        <datalist id="metric-types-list">
+            {% for type in metric_types %}
+                <option value="{{ type.name }}">{{ type.name }} ({{ type.source[0] }})</option>
+            {% endfor %}
+        </datalist>
+
         <select id="priority-filter">
             <option value="all" selected>All Priorities</option>
             <option value="P1">P1</option>
@@ -85,12 +124,14 @@
             <option value="P3">P3</option>
             <option value="P4">P4</option>
             <option value="P5">P5</option>
+            <option value="SkipCoverage">Skip Coverage</option>
             <option value="none">No Priority</option>
         </select>
         <select id="added-entries-filter">
             <option value="all" selected>All Metrics</option>
             <option value="added">With Planned Entries</option>
         </select>
+        <button id="reset-filters-btn">Reset</button>
     </div>
 
     <table id="planning-table">
@@ -105,7 +146,7 @@
         </thead>
         <tbody>
             {% for row in planning_data %}
-            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
+            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}" data-specific-metric-type="{{ row.specific_metric_type.lower() }}">
                 <td class="col-metric-name">
                     <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
                     {{ row.metric_name }}
@@ -114,12 +155,16 @@
                 <td class="col-count">{{ row.region_count }}</td>
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
-                    <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
-                        <option value="-" {% if not row.priority %}selected{% endif %}>-</option>
-                        {% for i in range(1, 6) %}
-                        <option value="P{{i}}" {% if row.priority == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
-                        {% endfor %}
-                    </select>
+                    <div>
+                        <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
+                            <option value="-" {% if not row.priority %}selected{% endif %}>-</option>
+                            {% for i in range(1, 6) %}
+                            <option value="P{{i}}" {% if row.priority == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
+                            {% endfor %}
+                            <option value="SkipCoverage" {% if row.priority == 'SkipCoverage' %}selected{% endif %}>Skip Coverage</option>
+                        </select>
+                        <span class="notes-icon {% if row.notes %}active{% endif %}" title="Edit Notes">📝</span>
+                    </div>
                 </td>
             </tr>
             <tr class="sub-table-row hidden" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
@@ -153,7 +198,6 @@
                                     <td><span class="remove-btn">✖</span></td>
                                 </tr>
                                 {% endfor %}
-                                {# Add new plan form #}
                                 <tr class="add-plan-form">
                                     <td><input type="text" class="new-plan-engine" placeholder="Engine..."></td>
                                     <td><input type="text" class="new-plan-region" placeholder="Region..."></td>
@@ -162,6 +206,11 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <div class="notes-section {% if not row.notes %}hidden{% endif %}">
+                            <h4>Notes</h4>
+                            <textarea class="notes-textarea" placeholder="Add planning notes here...">{{ row.notes or '' }}</textarea>
+                        </div>
                     </div>
                 </td>
             </tr>
@@ -175,165 +224,127 @@ document.addEventListener('DOMContentLoaded', function() {
     const table = document.getElementById('planning-table');
     const tcBaseUrl = "{{ tc_base_url }}";
 
-    // Toggle sub-table visibility
+    // Event delegation for all clicks on the table
     table.addEventListener('click', function(e) {
-        if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.closest('.sub-table-row')) {
-            return; // Don't toggle if clicking on interactive elements
-        }
-        if (e.target.closest('.metric-row')) {
-            const row = e.target.closest('.metric-row');
-            const metricName = row.dataset.metricName;
-            const metricType = row.dataset.metricType;
+        const metricRow = e.target.closest('.metric-row');
+        const subTableRow = e.target.closest('.sub-table-row');
 
-            const subTableRow = table.querySelector(`.sub-table-row[data-metric-name="${metricName}"][data-metric-type="${metricType}"]`);
-            if (subTableRow) {
-                subTableRow.classList.toggle('hidden');
+        // Toggle sub-table visibility, excluding certain elements
+        if (metricRow && !e.target.classList.contains('notes-icon') && e.target.tagName !== 'SELECT' && e.target.tagName !== 'OPTION') {
+            const subRow = metricRow.nextElementSibling;
+            if (subRow && subRow.classList.contains('sub-table-row')) {
+                subRow.classList.toggle('hidden');
             }
         }
-    });
 
-    // Handle AJAX updates for priority dropdown
-    table.addEventListener('change', function(e) {
-        if (e.target.classList.contains('priority-dropdown')) {
-            updatePlanning({
-                action: 'set_priority',
-                metric_name: e.target.dataset.metricName,
-                metric_type: e.target.dataset.metricType,
-                priority: e.target.value
-            });
+        // Handle notes icon click
+        if (e.target.classList.contains('notes-icon')) {
+            const parentRow = e.target.closest('.metric-row');
+            const subRow = parentRow.nextElementSibling;
+            if (subRow) {
+                const notesSection = subRow.querySelector('.notes-section');
+                notesSection.classList.toggle('hidden');
+                if (!notesSection.classList.contains('hidden')) {
+                    subRow.classList.remove('hidden');
+                    notesSection.querySelector('textarea').focus();
+                }
+            }
         }
-    });
 
-    // Add keydown listener for 'Enter' key on the add form
-    table.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && e.target.closest('.add-plan-form')) {
-            e.preventDefault(); // Prevent default form submission
-            const formRow = e.target.closest('.add-plan-form');
-            formRow.querySelector('.add-plan-btn').click(); // Trigger the button click
-        }
-    });
-
-    // Handle AJAX updates within the sub-table (add, remove, save)
-    table.addEventListener('click', function(e) {
-        const subTableRow = e.target.closest('.sub-table-row');
-        if (!subTableRow) return;
-
-        const metricName = subTableRow.dataset.metricName;
-        const metricType = subTableRow.dataset.metricType;
-
-        // Add new planned entry
+        // Handle "Add Plan" button click
         if (e.target.classList.contains('add-plan-btn')) {
             const formRow = e.target.closest('.add-plan-form');
-            const regionInput = formRow.querySelector('.new-plan-region');
-            const engineInput = formRow.querySelector('.new-plan-engine');
+            const subRow = formRow.closest('.sub-table-row');
+            const metricName = subRow.dataset.metricName;
+            const metricType = subRow.dataset.metricType;
+            const region = formRow.querySelector('.new-plan-region').value.trim();
+            const engine = formRow.querySelector('.new-plan-engine').value.trim();
 
-            if (!regionInput.value.trim() && !engineInput.value.trim()) {
-                alert('At least a Region or Engine is required to add a plan.');
-                return;
-            }
-
-            const payload = {
+            updatePlanning({
                 action: 'add_plan',
                 metric_name: metricName,
                 metric_type: metricType,
-                region: regionInput.value.trim(),
-                engine: engineInput.value.trim()
-            };
-
-            updatePlanning(payload).then(data => {
+                region: region,
+                engine: engine
+            }).then(data => {
                 if (data.success) {
-                    // --- START DYNAMIC ROW ADDITION ---
+                    // Dynamically add the new row to the UI
                     const newRow = document.createElement('tr');
                     newRow.classList.add('planned-entry');
                     newRow.dataset.planningId = data.new_id;
                     newRow.innerHTML = `
-                        <td>${payload.engine || 'NoEngine'}</td>
-                        <td>${payload.region || 'NoRegion'}</td>
+                        <td>${engine || 'NoEngine'}</td>
+                        <td>${region || 'NoRegion'}</td>
                         <td>
                             <input type="text" class="editable-tcid" value="" placeholder="Add TC ID to promote...">
                             <button class="save-tcid-btn">Save</button>
                         </td>
                         <td><span class="remove-btn">✖</span></td>
                     `;
-                    // Insert the new row before the 'add plan' form row
-                    formRow.parentNode.insertBefore(newRow, formRow);
-                    // Clear the input fields
-                    regionInput.value = '';
-                    engineInput.value = '';
-                    // --- END DYNAMIC ROW ADDITION ---
+                    formRow.before(newRow);
+                    // Clear input fields
+                    formRow.querySelector('.new-plan-region').value = '';
+                    formRow.querySelector('.new-plan-engine').value = '';
                 }
             });
         }
 
-        // Remove planned entry
+        // Handle "Remove Plan" button click
         if (e.target.classList.contains('remove-btn')) {
-            if (!confirm('Are you sure you want to remove this planned entry?')) return;
             const plannedRow = e.target.closest('.planned-entry');
-            updatePlanning({
-                action: 'remove_plan',
-                metric_name: metricName,
-                metric_type: metricType,
-                planning_id: plannedRow.dataset.planningId
-            }).then(data => {
-                if (data.success) {
-                    // --- DYNAMICALLY REMOVE ROW ---
-                    plannedRow.remove();
-                }
-            });
+            const planningId = plannedRow.dataset.planningId;
+            if (confirm('Are you sure you want to remove this planned entry?')) {
+                updatePlanning({ action: 'remove_plan', planning_id: planningId }).then(data => {
+                    if (data.success) {
+                        plannedRow.remove();
+                    }
+                });
+            }
         }
 
-        // Save/Promote planned entry
+        // --- START: DEFINITIVE FIX ---
+        // Handle "Save TCID" (Promote) button click
         if (e.target.classList.contains('save-tcid-btn')) {
             const plannedRow = e.target.closest('.planned-entry');
-            const tcidInput = plannedRow.querySelector('.editable-tcid');
-            const newTcId = tcidInput.value.trim();
-
-            if (!newTcId) {
-                alert('Please provide a valid TC ID to save this entry as coverage.');
+            const planningId = plannedRow.dataset.planningId;
+            const newTcid = plannedRow.querySelector('.editable-tcid').value.trim();
+            if (!newTcid) {
+                alert('Please enter a TC ID to promote this entry.');
                 return;
             }
 
-            if (!confirm(`This will add '${newTcId}' to the main coverage and remove this planned entry. Continue?`)) return;
+            // Get region and engine from the row before making the API call
+            const region = plannedRow.cells[1].textContent;
+            const engine = plannedRow.cells[0].textContent;
 
-            updatePlanning({
-                action: 'promote_to_coverage',
-                metric_name: metricName,
-                metric_type: metricType,
-                planning_id: plannedRow.dataset.planningId,
-                new_tc_id: newTcId
-            }).then(data => {
+            updatePlanning({ action: 'promote_to_coverage', planning_id: planningId, new_tc_id: newTcid }).then(data => {
                 if (data.success) {
-                    // --- START DYNAMIC UPDATE ---
-                    // 1. Remove the 'planned' row
-                    plannedRow.remove();
+                    // 1. Increment the TCID count in the main row
+                    const subTableRow = plannedRow.closest('.sub-table-row');
+                    const mainRow = subTableRow.previousElementSibling;
+                    const countCell = mainRow.querySelector('.tcid-count-cell');
+                    countCell.textContent = parseInt(countCell.textContent) + 1;
 
-                    // 2. Find the main metric row to update its count
-                    const mainMetricRow = document.querySelector(`.metric-row[data-metric-name="${metricName}"][data-metric-type="${metricType}"]`);
-                    if (mainMetricRow) {
-                        const countCell = mainMetricRow.querySelector('.tcid-count-cell');
-                        const currentCount = parseInt(countCell.textContent, 10);
-                        countCell.textContent = currentCount + 1;
-                    }
-
-                    // 3. Add a new 'existing' row to the sub-table
-                    const detailsTbody = subTableRow.querySelector('tbody');
-                    const addFormRow = detailsTbody.querySelector('.add-plan-form');
+                    // 2. Create and insert the new "existing" row
                     const newExistingRow = document.createElement('tr');
-                    // Extract region/engine from the removed planned row to build the new existing row
-                    const engine = plannedRow.cells[0].textContent;
-                    const region = plannedRow.cells[1].textContent;
+                    const tcidPrefixStripped = newTcid.match(/\d.*/) ? newTcid.match(/\d.*/)[0] : newTcid;
                     newExistingRow.innerHTML = `
                         <td>${engine}</td>
                         <td>${region}</td>
-                        <td><a href="${tcBaseUrl}${newTcId.replace(/^[a-zA-Z]+/, '')}" target="_blank">${newTcId}</a></td>
+                        <td><a href="${tcBaseUrl}${tcidPrefixStripped}" target="_blank">${newTcid}</a></td>
                         <td></td>
                     `;
-                    // Insert the new row before the 'add plan' form
-                    detailsTbody.insertBefore(newExistingRow, addFormRow);
-                    // --- END DYNAMIC UPDATE ---
+
+                    // Insert the new row at the top of the table body
+                    const tableBody = plannedRow.closest('tbody');
+                    tableBody.prepend(newExistingRow);
+
+                    // 3. Remove the old "planned" row
+                    plannedRow.remove();
                 }
             });
         }
+        // --- END: DEFINITIVE FIX ---
     });
 
     async function updatePlanning(payload) {
@@ -344,41 +355,64 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify(payload)
             });
             const data = await response.json();
-            if (!response.ok) {
-                alert('Error: ' + (data.error || 'Server error'));
-                return { success: false };
+            if (!data.success) {
+                alert('An error occurred: ' + (data.error || 'Unknown error'));
             }
-            return { ...data, success: true };
+            return data;
         } catch (error) {
             console.error('Update failed:', error);
-            alert('An unexpected error occurred.');
+            alert('A network or server error occurred.');
             return { success: false };
         }
     }
+
+    // Handle priority and notes changes
+    table.addEventListener('change', function(e) {
+        if (e.target.classList.contains('priority-dropdown')) {
+            const metricName = e.target.dataset.metricName;
+            const metricType = e.target.dataset.metricType;
+            const priority = e.target.value;
+            updatePlanning({ action: 'set_priority', metric_name: metricName, metric_type: metricType, priority: priority });
+        }
+        if (e.target.classList.contains('notes-textarea')) {
+            const subRow = e.target.closest('.sub-table-row');
+            const metricName = subRow.dataset.metricName;
+            const metricType = subRow.dataset.metricType;
+            const notes = e.target.value;
+            updatePlanning({ action: 'save_notes', metric_name: metricName, metric_type: metricType, notes: notes });
+            // Update the notes icon state
+            const notesIcon = subRow.previousElementSibling.querySelector('.notes-icon');
+            notesIcon.classList.toggle('active', notes.trim() !== '');
+        }
+    });
 
     // Filtering logic
     const searchField = document.getElementById('search-field');
     const priorityFilter = document.getElementById('priority-filter');
     const addedEntriesFilter = document.getElementById('added-entries-filter');
+    const typeFilter = document.getElementById('metric-type-filter');
+    const resetButton = document.getElementById('reset-filters-btn');
     const metricRows = document.querySelectorAll('.metric-row');
 
     function filterTable() {
-        const searchTerm = searchField.value.toLowerCase();
+        const searchTerm = searchField.value.trim().toLowerCase();
         const selectedPriority = priorityFilter.value;
         const selectedAdded = addedEntriesFilter.value;
+        const selectedType = typeFilter.value.trim().toLowerCase();
 
         metricRows.forEach(row => {
             const metricName = row.dataset.metricName.toLowerCase();
-            const metricType = row.dataset.metricType;
+            const specificMetricType = row.dataset.specificMetricType;
             const priority = row.querySelector('.priority-dropdown').value;
-            const subTableRow = table.querySelector(`.sub-table-row[data-metric-name="${row.dataset.metricName}"][data-metric-type="${metricType}"]`);
+            const subTableRow = row.nextElementSibling;
             const hasAddedEntries = subTableRow.querySelector('.planned-entry') !== null;
 
             const matchesSearch = metricName.includes(searchTerm);
             const matchesPriority = (selectedPriority === 'all') || (priority === selectedPriority) || (selectedPriority === 'none' && priority === '-');
             const matchesAdded = (selectedAdded === 'all') || (selectedAdded === 'added' && hasAddedEntries);
+            const matchesType = (selectedType === '') || (specificMetricType.includes(selectedType));
 
-            const isVisible = matchesSearch && matchesPriority && matchesAdded;
+            const isVisible = matchesSearch && matchesPriority && matchesAdded && matchesType;
             row.classList.toggle('hidden', !isVisible);
             if (!isVisible) {
                 subTableRow.classList.add('hidden');
@@ -386,9 +420,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function resetFilters() {
+        searchField.value = '';
+        typeFilter.value = '';
+        priorityFilter.value = 'all';
+        addedEntriesFilter.value = 'all';
+        filterTable();
+    }
+
     searchField.addEventListener('input', filterTable);
     priorityFilter.addEventListener('change', filterTable);
     addedEntriesFilter.addEventListener('change', filterTable);
+    typeFilter.addEventListener('input', filterTable);
+    resetButton.addEventListener('click', resetFilters);
 });
 </script>
 

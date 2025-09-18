@@ -32,8 +32,35 @@
         .col-center { text-align: center; }
         .col-compact.col-search { width: 50px; }
         .col-main-id { white-space: nowrap; }
-        .search-container { margin-bottom: 2rem; }
-        input[type="search"] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+
+        .search-container {
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .search-container input, .search-container button {
+            padding: 12px;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .search-container input {
+            flex-grow: 1;
+        }
+        #metric-type-filter {
+            flex-grow: 0.5;
+        }
+        #reset-filters-btn {
+            background-color: #6c757d;
+            color: white;
+            cursor: pointer;
+        }
+        #reset-filters-btn:hover {
+            background-color: #5a6268;
+        }
+
         .hidden { display: none; }
 
         /* Styles for delete icon button */
@@ -88,21 +115,19 @@
             list-style: none; /* For Firefox */
         }
 
-        /* <<< MODIFIED >>> Remove borders from the main metric rows */
         #coverage-table #coverage-body > tr > td {
             border: none;
             padding: 0;
         }
 
-        /* Fixed-width columns for counts */
         #coverage-table th:not(:first-child),
         #coverage-table td:not(:first-child) {
             text-align: center;
-            width: 120px; /* Set a fixed width for the count columns */
-            border-left: 1px solid #eef; /* Add left border back to count cells */
+            width: 120px;
+            border-left: 1px solid #eef;
         }
         #coverage-table #coverage-body > tr:hover {
-             background-color: #f7f9fc; /* Ensure hover effect still works */
+             background-color: #f7f9fc;
         }
     </style>
 </head>
@@ -110,7 +135,6 @@
 
 <div class="container">
     <nav>
-    {# DEFINITIVE FIX: Use the correct endpoint 'management.index' #}
     <a href="{{ url_for('management.index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
     <a href="{{ url_for('main.metrics') }}" class="active">View Metrics</a>
     <a href="{{ url_for('main.reports') }}">Metric Reports</a>
@@ -120,12 +144,20 @@
     <h1>Metrics Data</h1>
 
     <div class="search-container">
-        <label for="search-field"><h2>Global Search</h2></label>
+        <label for="search-field" class="hidden">Global Search</label>
         <input type="search" id="search-field" list="suggestions-all" placeholder="Search by Metric, TC ID, Region, or Engine...">
         <datalist id="suggestions-all"></datalist>
+
+        <input type="text" id="metric-type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
+        <datalist id="metric-types-list">
+            {% for type in metric_types %}
+                <option value="{{ type.name }}">{{ type.name }} ({{ type.source[0] }})</option>
+            {% endfor %}
+        </datalist>
+
+        <button id="reset-filters-btn">Reset</button>
     </div>
 
-    <!-- MODIFIED: Coverage Table with expandable rows and new TCID Count column -->
     <details open>
         <summary>Test Case Coverage ({{ coverage_count }})</summary>
         <table id="coverage-table">
@@ -139,9 +171,7 @@
             </thead>
             <tbody id="coverage-body">
                 {% for item in coverage %}
-                {# This outer row is now just a container for the details #}
-                <tr class="metric-row" data-metric-name="{{ item.metric_name }}">
-                    {# Replaced colspan with individual <td> elements #}
+                <tr class="metric-row" data-metric-name="{{ item.metric_name }}" data-metric-type="{{ item.metric_type.lower() }}">
                     <td>
                         <details>
                             <summary>{{ item.metric_name }}</summary>
@@ -155,7 +185,6 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {# The data is pre-sorted in app.py #}
                                         {% for detail in item.details %}
                                         <tr class="detail-row" data-engine="{{ detail.engine or '' }}" data-region="{{ detail.region or '' }}" data-tcid="{{ detail.tc_id }}">
                                             <td>{{ detail.engine or 'NoEngine' }}</td>
@@ -177,7 +206,6 @@
         </table>
     </details>
 
-    <!-- Glean and Legacy tables ... -->
     <details open>
         <summary>Glean Metrics ({{ glean_count }})</summary>
         <table id="glean-table">
@@ -193,7 +221,7 @@
             </thead>
             <tbody id="glean-body">
                 {% for metric in glean_metrics %}
-                <tr data-name="{{ metric.glean_name }}">
+                <tr data-name="{{ metric.glean_name }}" data-metric-type="{{ metric.metric_type.lower() }}">
                     <td class="col-main-id" title="{{ metric.glean_name }}">{{ metric.glean_name }}</td>
                     <td class="col-compact">{{ metric.metric_type }}</td>
                     <td class="col-compact">{{ metric.expiration }}</td>
@@ -225,7 +253,7 @@
             </thead>
             <tbody id="legacy-body">
                 {% for metric in legacy_metrics %}
-                <tr data-name="{{ metric.legacy_name }}">
+                <tr data-name="{{ metric.legacy_name }}" data-metric-type="{{ metric.metric_type.lower() }}">
                     <td class="col-main-id" title="{{ metric.legacy_name }}">{{ metric.legacy_name }}</td>
                     <td class="col-compact">{{ metric.metric_type }}</td>
                     <td class="col-compact">{{ metric.expiration }}</td>
@@ -262,35 +290,39 @@
         fetchSuggestions('all', 'suggestions-all');
 
         const searchField = document.getElementById('search-field');
+        const typeFilter = document.getElementById('metric-type-filter');
+        const resetButton = document.getElementById('reset-filters-btn');
         const gleanRows = document.querySelectorAll('#glean-table tbody tr');
         const legacyRows = document.querySelectorAll('#legacy-table tbody tr');
         const coverageRows = document.querySelectorAll('#coverage-table tbody tr.metric-row');
 
         function filterContent() {
-            const searchTerm = searchField.value.toLowerCase();
+            const searchTerm = searchField.value.trim().toLowerCase();
+            const selectedType = typeFilter.value.trim().toLowerCase();
 
-            // Filter Glean table
             gleanRows.forEach(row => {
                 const name = row.dataset.name.toLowerCase();
+                const metricType = row.dataset.metricType.toLowerCase();
                 const matchesSearch = name.includes(searchTerm) || searchTerm === '';
-                row.classList.toggle('hidden', !matchesSearch);
+                const matchesType = (selectedType === '') || (metricType.includes(selectedType));
+                row.classList.toggle('hidden', !(matchesSearch && matchesType));
             });
 
-            // Filter Legacy table
             legacyRows.forEach(row => {
                 const name = row.dataset.name.toLowerCase();
+                const metricType = row.dataset.metricType.toLowerCase();
                 const matchesSearch = name.includes(searchTerm) || searchTerm === '';
-                row.classList.toggle('hidden', !matchesSearch);
+                const matchesType = (selectedType === '') || (metricType.includes(selectedType));
+                row.classList.toggle('hidden', !(matchesSearch && matchesType));
             });
 
-            // Filter Coverage table with enhanced logic
             coverageRows.forEach(row => {
                 const metricName = row.dataset.metricName.toLowerCase();
+                const metricType = row.dataset.metricType.toLowerCase();
                 const detailsElement = row.querySelector('details');
                 const detailRows = row.querySelectorAll('.detail-row');
                 let hasMatchInDetails = false;
 
-                // Check if any detail row matches the search term
                 detailRows.forEach(detailRow => {
                     const tcid = detailRow.dataset.tcid.toLowerCase();
                     const region = detailRow.dataset.region.toLowerCase();
@@ -300,23 +332,30 @@
                     }
                 });
 
-                const matchesMetricName = metricName.includes(searchTerm);
-                const shouldBeVisible = matchesMetricName || hasMatchInDetails || searchTerm === '';
+                const matchesSearch = metricName.includes(searchTerm) || hasMatchInDetails || searchTerm === '';
+                const matchesType = (selectedType === '') || (metricType.includes(selectedType));
 
+                const shouldBeVisible = matchesSearch && matchesType;
                 row.classList.toggle('hidden', !shouldBeVisible);
 
-                // Auto-expand details if a match is found within them and a search is active
-                if (searchTerm !== '' && hasMatchInDetails && !matchesMetricName) {
+                if (searchTerm !== '' && hasMatchInDetails && !matchesMetricName && shouldBeVisible) {
                     detailsElement.open = true;
-                } else if (searchTerm === '') {
-                    // Optional: close all details when search is cleared
+                } else if (searchTerm === '' && selectedType === '') {
                     detailsElement.open = false;
                 }
             });
         }
 
+        function resetFilters() {
+            searchField.value = '';
+            typeFilter.value = '';
+            filterContent();
+        }
+
         searchField.addEventListener('input', filterContent);
-        filterContent(); // Initial filter call
+        typeFilter.addEventListener('input', filterContent);
+        resetButton.addEventListener('click', resetFilters);
+        filterContent();
 
         document.querySelectorAll('.delete-btn').forEach(button => {
             button.addEventListener('click', function() {
@@ -347,14 +386,11 @@
         document.addEventListener('keydown', function(event) {
             if (event.ctrlKey && event.shiftKey && event.key === 'D') {
                 event.preventDefault();
-                // This shortcut might need rethinking with the new nested structure,
-                // but for now, it will show delete buttons on Glean/Legacy tables.
                 document.getElementById('glean-body').classList.toggle('actions-visible');
                 document.getElementById('legacy-body').classList.toggle('actions-visible');
             }
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
                 event.preventDefault();
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.toggle_management_view' #}
                 fetch("{{ url_for('management.toggle_management_view') }}", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }

@@ -16,28 +16,31 @@
         nav a.active { border-bottom: 2px solid #2c5282; }
         .hidden { display: none; }
 
-        /* Search container with dropdown on the right */
         .search-container {
             display: flex;
             gap: 1rem;
             margin-bottom: 2rem;
             align-items: center;
         }
-        .search-container input[type="search"] {
-            flex-grow: 1;
-        }
-
-        /* Shared class for form controls for consistent styling */
-        .form-control {
+        .search-container input, .search-container button {
             padding: 12px;
             font-size: 1rem;
             border: 1px solid #ccc;
             border-radius: 4px;
-            background-color: white;
             box-sizing: border-box;
         }
+        .search-container input {
+            flex-grow: 1;
+        }
+        #reset-filters-btn {
+            background-color: #6c757d;
+            color: white;
+            cursor: pointer;
+        }
+        #reset-filters-btn:hover {
+            background-color: #5a6268;
+        }
 
-        /* Styles for the breakdown section */
         .breakdown-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -65,12 +68,10 @@
             margin: 0;
         }
 
-        /* Styles for the report table */
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 12px; text-align: left; border: 1px solid #eef; vertical-align: middle; }
         th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
 
-        /* --- MODIFIED: Add hover and cursor for expandable rows --- */
         tr.metric-row:hover { background-color: #f7f9fc; cursor: pointer; }
 
         .metric-type-badge {
@@ -91,15 +92,9 @@
         .col-metric-name { word-break: break-all; }
         .col-count { width: 120px; text-align: center; }
 
-        /* --- NEW: Sub-table styles (copied from planning.html) --- */
         .details-container { padding: 1rem; background-color: #fdfdff; }
         .details-table { font-size: 0.9em; }
         .details-table th, .details-table td { padding: 8px; }
-        .details-table .context {
-            font-size: 0.9em;
-            color: #555;
-            margin-left: 5px;
-        }
     </style>
 </head>
 <body>
@@ -137,13 +132,17 @@
 
     <h2>Metric Coverage Details</h2>
     <div class="search-container">
-        <input type="search" id="search-field" list="suggestions-all" placeholder="Search for metrics..." class="form-control">
+        <input type="search" id="search-field" list="suggestions-all" placeholder="Search for metrics...">
         <datalist id="suggestions-all"></datalist>
-        <select id="type-filter" class="form-control">
-            <option value="all" selected>All</option>
-            <option value="glean">Glean</option>
-            <option value="legacy">Legacy</option>
-        </select>
+
+        <input type="text" id="type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
+        <datalist id="metric-types-list">
+            {% for type in metric_types %}
+                <option value="{{ type.name }}">{{ type.name }} ({{ type.source[0] }})</option>
+            {% endfor %}
+        </datalist>
+
+        <button id="reset-filters-btn">Reset</button>
     </div>
 
     <table id="report-table">
@@ -155,15 +154,13 @@
         </thead>
         <tbody>
             {% for row in report_data %}
-            {# --- MODIFIED: Main row is now expandable --- #}
             <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
                 <td class="col-metric-name">
-                    <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
+                    <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type|capitalize|first }}</span>
                     {{ row.metric_name }}
                 </td>
                 <td class="col-count">{{ row.tcid_count }}</td>
             </tr>
-            {# --- NEW: Hidden sub-table row for details --- #}
             <tr class="sub-table-row hidden" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
                 <td colspan="2">
                     <div class="details-container">
@@ -205,10 +202,9 @@
     document.addEventListener('DOMContentLoaded', function() {
         const table = document.getElementById('report-table');
 
-        // --- NEW: Toggle sub-table visibility on main row click ---
         table.addEventListener('click', function(e) {
             if (e.target.closest('.sub-table-row')) {
-                return; // Ignore clicks within the sub-table itself
+                return;
             }
             const row = e.target.closest('.metric-row');
             if (row) {
@@ -235,28 +231,29 @@
                     });
                 });
         }
-        fetchSuggestions('metrics', 'suggestions-all'); // Changed from 'all' to 'metrics' for relevance
+        fetchSuggestions('metrics', 'suggestions-all');
 
         const searchField = document.getElementById('search-field');
         const typeFilter = document.getElementById('type-filter');
+        const resetButton = document.getElementById('reset-filters-btn');
         const metricRows = document.querySelectorAll('#report-table .metric-row');
-        const subTableRows = document.querySelectorAll('#report-table .sub-table-row');
 
         function filterReport() {
-            const searchTerm = searchField.value.toLowerCase();
-            const selectedType = typeFilter.value;
+            const searchTerm = searchField.value.trim().toLowerCase();
+            const selectedType = typeFilter.value.trim().toLowerCase();
 
             metricRows.forEach(row => {
                 const metricName = row.dataset.metricName.toLowerCase();
                 const metricType = row.dataset.metricType;
 
+                // On this page, we don't have specific types, so we check if the search term
+                // is part of 'glean' or 'legacy'. This is a simple check.
                 const matchesSearch = metricName.includes(searchTerm);
-                const matchesType = (selectedType === 'all') || (metricType === selectedType);
+                const matchesType = (selectedType === '') || (metricType.includes(selectedType));
 
                 const isVisible = matchesSearch && matchesType;
                 row.classList.toggle('hidden', !isVisible);
 
-                // Also hide the corresponding sub-row if the main row is hidden
                 const subRow = table.querySelector(`.sub-table-row[data-metric-name="${row.dataset.metricName}"][data-metric-type="${metricType}"]`);
                 if (subRow && !isVisible) {
                     subRow.classList.add('hidden');
@@ -264,8 +261,15 @@
             });
         }
 
+        function resetFilters() {
+            searchField.value = '';
+            typeFilter.value = '';
+            filterReport();
+        }
+
         searchField.addEventListener('input', filterReport);
-        typeFilter.addEventListener('change', filterReport);
+        typeFilter.addEventListener('input', filterReport);
+        resetButton.addEventListener('click', resetFilters);
 
         document.addEventListener('keydown', function(event) {
             if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
