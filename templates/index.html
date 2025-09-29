@@ -71,6 +71,18 @@
         .upload-results .success { color: #2f855a; }
         .upload-results .errors { color: #c53030; }
         .upload-results ul { padding-left: 20px; max-height: 150px; overflow-y: auto; }
+
+        /* --- NEW STYLES FOR ENGINE MANAGEMENT --- */
+        .engine-list { list-style: none; padding: 0; }
+        .engine-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eef; }
+        .engine-list li:last-child { border-bottom: none; }
+        .delete-engine-btn { background-color: #e53e3e; font-size: 0.8rem; padding: 4px 8px; }
+        .delete-engine-btn:hover { background-color: #c53030; }
+        .engine-form { display: flex; gap: 10px; margin-top: 1rem; }
+        .engine-form input { flex-grow: 1; margin-bottom: 0; }
+        .engine-form button { flex-shrink: 0; }
+        #engine-message { margin-top: 0.5rem; font-size: 0.9rem; }
+        /* --- END NEW STYLES --- */
     </style>
 </head>
 <body>
@@ -206,9 +218,9 @@
         <div id="legacy-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
     </details>
 
-    <!-- NEW: Section for extracting probes -->
+    <!-- MODIFIED: Section for extracting probes and metrics -->
     <details id="extract-probes-details">
-        <summary>Extract Probes from Test Cases</summary>
+        <summary>Extract Data from Test Cases</summary>
         <div class="form-section" style="padding: 1rem 1rem 1.5rem;">
             <h3>Upload Test Case CSV to Extract Probes</h3>
             <p>Upload a CSV file (e.g., <code>extract_data.csv</code>) with columns: <code>ID</code>, <code>Title</code>, <code>Steps</code>, and <code>Steps (Expected Result)</code>.</p>
@@ -218,6 +230,38 @@
                 <input type="file" name="file" accept=".csv" required>
                 <button type="submit">Extract Probes</button>
             </form>
+
+            <hr style="margin: 1.5rem 0;">
+
+            <h3>Upload Test Case CSV to Extract Probes</h3>
+            <p>Upload a CSV file with columns: <code>ID</code>, <code>Title</code>, and <code>rotation</code>.</p>
+            <p>The tool will parse the title for region/engine and the rotation for metrics, returning an enhanced CSV.</p>
+            <form action="{{ url_for('management.extract_from_rotation') }}" method="post" enctype="multipart/form-data">
+                <input type="file" name="file" accept=".csv" required>
+                <button type="submit">Extract from Rotation</button>
+            </form>
+        </div>
+    </details>
+
+    <!-- NEW SECTION: Manage Supported Engines -->
+    <details id="manage-engines-details">
+        <summary>Manage Supported Engines</summary>
+        <div class="form-section" style="padding: 1rem 1rem 1.5rem;">
+            <h3>Current Engines for Extraction</h3>
+            <p>This list determines which engines are detected by the "Extract from Rotation" tool.</p>
+            <ul id="engine-list" class="engine-list">
+                {% for engine in supported_engines %}
+                <li data-engine-name="{{ engine.name }}">
+                    <span>{{ engine.name }}</span>
+                    <button class="delete-engine-btn" data-name="{{ engine.name }}">Delete</button>
+                </li>
+                {% endfor %}
+            </ul>
+            <form id="add-engine-form" class="engine-form">
+                <input type="text" id="new-engine-name" placeholder="Add new engine (e.g., yandex)" required>
+                <button type="submit">Add Engine</button>
+            </form>
+            <div id="engine-message"></div>
         </div>
     </details>
 </div>
@@ -308,6 +352,69 @@
                     if (data.success) {
                         // Reload the page to apply the new session state everywhere
                         window.location.reload();
+                    }
+                });
+            }
+        });
+
+        // --- NEW SCRIPT FOR ENGINE MANAGEMENT ---
+        const addEngineForm = document.getElementById('add-engine-form');
+        const engineList = document.getElementById('engine-list');
+        const engineMessage = document.getElementById('engine-message');
+
+        addEngineForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const newEngineInput = document.getElementById('new-engine-name');
+            const engineName = newEngineInput.value.trim();
+            if (!engineName) return;
+
+            const formData = new FormData();
+            formData.append('name', engineName);
+
+            fetch("{{ url_for('management.add_engine') }}", {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Add to list dynamically
+                    const li = document.createElement('li');
+                    li.dataset.engineName = data.name;
+                    li.innerHTML = `<span>${data.name}</span> <button class="delete-engine-btn" data-name="${data.name}">Delete</button>`;
+                    engineList.appendChild(li);
+                    newEngineInput.value = '';
+                    engineMessage.textContent = `Successfully added '${data.name}'.`;
+                    engineMessage.style.color = '#2f855a';
+                } else {
+                    engineMessage.textContent = `Error: ${data.error}`;
+                    engineMessage.style.color = '#c53030';
+                }
+            });
+        });
+
+        engineList.addEventListener('click', function(e) {
+            if (e.target.classList.contains('delete-engine-btn')) {
+                const engineName = e.target.dataset.name;
+                if (!confirm(`Are you sure you want to delete the engine '${engineName}'?`)) return;
+
+                const formData = new FormData();
+                formData.append('name', engineName);
+
+                fetch("{{ url_for('management.delete_engine') }}", {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Remove from list dynamically
+                        e.target.closest('li').remove();
+                        engineMessage.textContent = `Successfully deleted '${engineName}'.`;
+                        engineMessage.style.color = '#2f855a';
+                    } else {
+                        engineMessage.textContent = `Error: ${data.error}`;
+                        engineMessage.style.color = '#c53030';
                     }
                 });
             }

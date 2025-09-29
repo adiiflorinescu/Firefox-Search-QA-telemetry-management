@@ -372,3 +372,34 @@ def get_search_suggestions(suggestion_type):
         suggestions.extend(
             [r['tc_id'] for r in conn.execute('SELECT DISTINCT tc_id FROM coverage WHERE is_deleted = FALSE')])
     return sorted(list(set(suggestions)))
+
+# --- NEW FUNCTIONS FOR ENGINE MANAGEMENT ---
+
+def get_supported_engines():
+    """Fetches all supported engines from the database."""
+    conn = get_db()
+    return conn.execute('SELECT name FROM supported_engines ORDER BY name').fetchall()
+
+def add_engine(engine_name):
+    """Adds a new supported engine to the database."""
+    try:
+        conn = get_db()
+        conn.execute("INSERT INTO supported_engines (name) VALUES (?)", (engine_name,))
+        conn.commit()
+        return True, f"Successfully added engine: {engine_name}"
+    except sqlite3.IntegrityError:
+        return False, f"Engine '{engine_name}' already exists."
+    except sqlite3.Error as e:
+        current_app.logger.error(f"Database error in add_engine: {e}")
+        return False, f"Database error: {e}"
+
+def delete_engine(engine_name):
+    """Deletes a supported engine from the database."""
+    try:
+        conn = get_db()
+        conn.execute("DELETE FROM supported_engines WHERE name = ?", (engine_name,))
+        conn.commit()
+        return True, f"Successfully deleted engine: {engine_name}"
+    except sqlite3.Error as e:
+        current_app.logger.error(f"Database error in delete_engine: {e}")
+        return False, f"Database error: {e}"

@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS planning;
 DROP TABLE IF EXISTS coverage;
 DROP TABLE IF EXISTS glean_metrics;
 DROP TABLE IF EXISTS legacy_metrics;
+DROP TABLE IF EXISTS supported_engines; -- Add this line
 
 -- Table for Glean metrics definitions
 CREATE TABLE glean_metrics (
@@ -73,6 +74,15 @@ CREATE TABLE planning (
     updated_at DATETIME DEFAULT (datetime('now')),
     UNIQUE (metric_name, metric_type, tc_id, region, engine)
 );
+
+-- NEW: Table for supported search engines for extraction
+CREATE TABLE supported_engines (
+    name TEXT PRIMARY KEY NOT NULL
+);
+
+-- Optional: Pre-populate with default engines
+INSERT INTO supported_engines (name) VALUES ('google'), ('bing'), ('duckduckgo'), ('yahoo');
+
 
 -- Triggers to auto-update the 'updated_at' column
 CREATE TRIGGER update_glean_metrics_updated_at

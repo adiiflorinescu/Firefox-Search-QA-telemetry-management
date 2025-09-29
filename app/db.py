@@ -1,3 +1,5 @@
+# C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/db.py
+
 import sqlite3
 import click
 from flask import current_app, g
@@ -14,6 +16,7 @@ def get_db():
             detect_types=sqlite3.PARSE_DECLTYPES
         )
         g.db.row_factory = sqlite3.Row
+        # It's good practice to enable foreign key constraints for SQLite.
         g.db.execute("PRAGMA foreign_keys = ON;")
     return g.db
 
@@ -29,6 +32,8 @@ def close_db(e=None):
 def init_db():
     """Clear existing data and create new tables."""
     db = get_db()
+    # --- DEFINITIVE FIX: Correct the path to schema.sql ---
+    # Use '..' to go up one level from the app's root path to the project root.
     with current_app.open_resource('../schema.sql') as f:
         db.executescript(f.read().decode('utf8'))
 
