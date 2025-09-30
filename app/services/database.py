@@ -188,6 +188,56 @@ def add_exception(form_data, user_id):
 
 # --- Data Fetching (Read) Functions ---
 
+def get_metric_status_details(metric_type, metric_name):
+    """
+    Gathers all details for a single metric for its status page.
+    """
+    if metric_type not in ['glean', 'legacy']:
+        return None
+
+    db = get_db()
+    exception_tcids = _get_exception_tcid_set()
+    placeholders = ','.join('?' for _ in exception_tcids)
+
+    # 1. Get primary metric details
+    metric_table = f"{metric_type}_metrics"
+    name_col = f"{metric_type}_name"
+    metric_details = db.execute(
+        f"SELECT * FROM {metric_table} WHERE {name_col} = ? AND is_deleted = FALSE",
+        (metric_name,)
+    ).fetchone()
+
+    if not metric_details:
+        return None  # Metric not found
+
+    # 2. Get existing coverage, excluding excepted TCIDs
+    existing_coverage_query = f"""
+        SELECT c.tc_id, c.tcid_title, l.region, l.engine
+        FROM coverage_to_metric_link l
+        JOIN coverage c ON l.coverage_id = c.coverage_id
+        WHERE l.metric_name = ?
+          AND l.metric_type = ?
+          AND l.is_deleted = FALSE
+          AND c.is_deleted = FALSE
+          AND c.tc_id NOT IN ({placeholders or '""'})
+        ORDER BY c.tc_id, l.engine, l.region
+    """
+    params = [metric_name, metric_type.capitalize()] + list(exception_tcids)
+    existing_coverage = db.execute(existing_coverage_query, params).fetchall()
+
+    # 3. Get planned coverage
+    planned_coverage = db.execute(
+        "SELECT region, engine FROM planning WHERE metric_name = ? AND metric_type = ? AND is_deleted = FALSE",
+        (metric_name, metric_type.lower())
+    ).fetchall()
+
+    return {
+        'details': metric_details,
+        'type': metric_type.capitalize(),
+        'existing_coverage': existing_coverage,
+        'planned_coverage': planned_coverage
+    }
+
 def get_supported_engines():
     """Fetches the list of supported search engines."""
     return get_db().execute("SELECT name FROM supported_engines ORDER BY name").fetchall()

@@ -63,24 +63,19 @@
 
         .hidden { display: none; }
 
-        /* Styles for delete icon button */
+        /* DEFINITIVE FIX: Styles for delete icon button */
         .delete-btn {
             background: none;
             border: none;
             font-size: 1.0rem;
             cursor: pointer;
             padding: 0;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s ease-in-out;
             color: #c53030;
-        }
-        .actions-visible .delete-btn {
-            opacity: 0.6;
-            visibility: visible;
+            opacity: 0.6; /* Make it slightly transparent by default */
+            transition: opacity 0.2s ease-in-out;
         }
         .delete-btn:hover {
-            opacity: 1;
+            opacity: 1; /* Full opacity on hover */
         }
         .col-actions {
             width: 0.7em;
@@ -135,7 +130,6 @@
 
 <div class="container">
     <nav>
-        {# DEFINITIVE FIX: Check if g.user exists before accessing its properties #}
         {% if g.user and g.user.role == 'admin' %}
             <a href="{{ url_for('management.index') }}">Data Management</a>
             <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
@@ -229,7 +223,7 @@
                     <th class="col-compact">Expire</th>
                     <th class="col-compact col-search col-center">Srch</th>
                     <th class="description-cell">Description</th>
-                    <th class="col-actions"></th>
+                    {% if g.user and g.user.role == 'admin' %}<th class="col-actions"></th>{% endif %}
                 </tr>
             </thead>
             <tbody id="glean-body">
@@ -242,9 +236,12 @@
                     <td class="description-cell">
                         <div class="description-content">{{ metric.description }}</div>
                     </td>
+                    {# DEFINITIVE FIX: Only render the delete button cell for admins #}
+                    {% if g.user and g.user.role == 'admin' %}
                     <td class="col-actions">
                         <button class="delete-btn" data-table="glean_metrics" data-pk="{{ metric.glean_name }}" title="Delete item">❎</button>
                     </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -261,7 +258,7 @@
                     <th class="col-compact">Expire</th>
                     <th class="col-compact col-search col-center">Srch</th>
                     <th class="description-cell">Description</th>
-                    <th class="col-actions"></th>
+                    {% if g.user and g.user.role == 'admin' %}<th class="col-actions"></th>{% endif %}
                 </tr>
             </thead>
             <tbody id="legacy-body">
@@ -274,9 +271,12 @@
                     <td class="description-cell">
                         <div class="description-content">{{ metric.description }}</div>
                     </td>
+                    {# DEFINITIVE FIX: Only render the delete button cell for admins #}
+                    {% if g.user and g.user.role == 'admin' %}
                     <td class="col-actions">
                         <button class="delete-btn" data-table="legacy_metrics" data-pk="{{ metric.legacy_name }}" title="Delete item">❎</button>
                     </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -396,26 +396,7 @@
             });
         });
 
-        document.addEventListener('keydown', function(event) {
-            if (event.ctrlKey && event.shiftKey && event.key === 'D') {
-                event.preventDefault();
-                document.getElementById('glean-body').classList.toggle('actions-visible');
-                document.getElementById('legacy-body').classList.toggle('actions-visible');
-            }
-            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
-                event.preventDefault();
-                fetch("{{ url_for('management.toggle_management_view') }}", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.reload();
-                    }
-                });
-            }
-        });
+        // DEFINITIVE FIX: The keyboard shortcut listener has been removed.
     });
 </script>
 

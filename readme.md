@@ -33,7 +33,6 @@ A comprehensive web application for managing and viewing telemetry metric covera
 - **Metric Coverage Details Table**:
   - A unified list of all Glean and Legacy metrics with differentiating badges.
   - A count of how many TCIDs cover each metric.
-  - A collapsible "Show TCIDs" section listing all associated test cases for each metric.
 - **Filtered Search**: A global search bar combined with a dropdown to filter the report by "All", "Glean", or "Legacy" metric types.
 
 ### 4. Coverage Planning (`/planning`)
@@ -45,16 +44,22 @@ A comprehensive web application for managing and viewing telemetry metric covera
   - Add "planned" entries for a metric with a specific region or engine.
   - Promote a planned entry to full coverage by adding a TCID.
 
-### 5. User Management & Roles (`/users`)
+### 5. Metric Status Page (`/<metric_type>/<metric_name>/status`)
+- **Publicly Shareable**: A read-only public page designed to be shared with stakeholders, accessible without a login.
+- **Complete Snapshot**: Displays all known information for a single metric, including:
+  - Primary details like type, priority, and description.
+  - A full list of existing test case coverage.
+  - A list of all planned coverage entries.
+  - Any notes or comments associated with the metric.
+- **Context-Aware Navigation**: Shows a minimal "Login" link for public users and the full navigation bar for logged-in users.
+
+### 6. User Management & Roles (`/users`)
 - **Role-Based Access Control**: The application supports three distinct user roles:
   - `admin`: Full access to all features, including data management and user management.
   - `editor`: Can view all data and interact with the Coverage Planning page (set priorities, add notes, etc.). Cannot access Data or User Management.
   - `readonly`: Can view all data on all pages but cannot make any changes.
-- **User Administration**: Admins can create and delete user accounts.
-
-### 6. Keyboard Shortcuts
-- **`Ctrl+Shift+Z`**: Toggles the visibility of the "Data Management" navigation link for admins.
-- **`Ctrl+Shift+D`**: Toggles the visibility of the delete buttons on the "View Metrics" page for admins.
+- **User Administration**: Admins can create, edit (including password resets), and delete user accounts.
+- **Activity Log**: A searchable, admin-only page that logs all significant user actions.
 
 ---
 
@@ -64,7 +69,7 @@ A comprehensive web application for managing and viewing telemetry metric covera
 1.  Navigate to the `/auth/login` page.
 2.  Enter valid administrator credentials (`username` and `password`).
 3.  Upon success, be redirected to the "View Metrics" page.
-4.  Successfully navigate between "Data Management", "View Metrics", "Metric Reports", "Coverage Planning", and "User Management" using the navigation links.
+4.  Successfully navigate between "Data Management", "Activity Log", "View Metrics", "Metric Reports", "Coverage Planning", and "User Management" using the navigation links.
 5.  Click "Logout" to be securely logged out and redirected to the login page.
 
 ### 2. Data Management: Adding & Importing
@@ -85,6 +90,12 @@ A comprehensive web application for managing and viewing telemetry metric covera
     2.  In the "Add Plan" form at the bottom, enter a region/engine and click "Add Plan". A new "planned" entry appears in the sub-table.
     3.  Change the priority of a metric using its dropdown. The change is saved automatically.
     4.  In a planned entry row, enter a new TCID and click "Save". The planned entry is removed and a new, permanent coverage link appears in its place. The "TCID Count" in the main row increments.
+
+### 5. View a Public Metric Status Page
+1.  Navigate directly to a URL for a specific metric, for example: `/glean/browser.engagement.active_ticks/status`.
+2.  The page loads successfully without requiring a login.
+3.  The page displays a comprehensive, read-only summary of the metric's details, existing coverage, and planned coverage.
+4.  The navigation bar is minimal, showing only a "Login" link.
 
 ---
 
@@ -111,7 +122,6 @@ From the project's root directory (`pythonProject`), create and activate a virtu
 
 ### 4. Install Dependencies
 Install all the required Python packages using the `requirements.txt` file.
-
 
 ### 5. Set Up the Database
 The application uses a `schema.sql` file to define its structure. To initialize or reset the database, run the following command from the project root directory: flask init-db

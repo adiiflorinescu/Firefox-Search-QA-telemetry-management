@@ -185,9 +185,3 @@ def delete_engine():
 def soft_delete(table_name, pk):
     success = db.soft_delete_item(table_name, pk, g.user['user_id'])
     return jsonify({'success': success})
-
-
-@bp.route('/toggle-management-view', methods=['POST'])
-def toggle_management_view():
-    session['show_management'] = not session.get('show_management', False)
-    return jsonify({'success': True, 'show_management': session['show_management']})

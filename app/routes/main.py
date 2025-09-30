@@ -7,14 +7,12 @@ from ..utils.decorators import login_required
 bp = Blueprint('main', __name__)
 
 
-@bp.before_request
-@login_required
-def before_request():
-    """Protects all routes in this blueprint."""
-    pass
+# DEFINITIVE FIX: The global before_request has been removed to allow for public routes.
+# The @login_required decorator will now be applied to each route individually.
 
 
 @bp.route('/metrics')
+@login_required
 def metrics():
     """Renders the main metrics view page with all data."""
     coverage_data, metric_types = db.get_all_coverage_details()
@@ -36,6 +34,7 @@ def metrics():
 
 
 @bp.route('/reports')
+@login_required
 def reports():
     """Renders the reports page."""
     report_data, metric_types, metric_to_tcids = db.get_report_data()
@@ -67,7 +66,28 @@ def activity_log():
     return render_template('activity_log.html', history=history)
 
 
+# DEFINITIVE FIX: This route is now public (no @login_required decorator).
+@bp.route('/<string:metric_type>/<path:metric_name>/status')
+def metric_status(metric_type, metric_name):
+    """Renders a read-only status page for a single metric."""
+    metric_data = db.get_metric_status_details(metric_type, metric_name)
+
+    if not metric_data:
+        flash(f"Metric '{metric_name}' not found.", "error")
+        # If a user is not logged in, redirect to login. Otherwise, to metrics.
+        if g.user:
+            return redirect(url_for('main.metrics'))
+        return redirect(url_for('auth.login'))
+
+    return render_template(
+        'metric_status.html',
+        metric_data=metric_data,
+        tc_base_url=current_app.config.get('TC_BASE_URL', '')
+    )
+
+
 @bp.route('/search-suggestions')
+@login_required
 def search_suggestions():
     """Provides a JSON list of search terms for autofill."""
     suggestions = db.get_search_suggestions()
