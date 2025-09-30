@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telemetry-dashboard"
+version = "1.0.0"
+description = "A dashboard for viewing telemetry metrics."
+
+# This section explicitly tells the build system to look for packages
+# in the current directory ('.') and to only include the 'app' directory.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["instance", "templates", "uploads", "tests"]

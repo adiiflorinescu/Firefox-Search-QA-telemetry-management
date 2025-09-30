@@ -1,33 +1,31 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/routes/planning.py
 
-from flask import Blueprint, render_template, request, jsonify, session, current_app
+from flask import Blueprint, render_template, request, jsonify, current_app, g
 from ..services import database as db
+from ..utils.decorators import login_required
 
 bp = Blueprint('planning', __name__, url_prefix='/planning')
 
 
 @bp.route('/')
+@login_required
 def view_planning():
     """Renders the new Coverage Planning page."""
-    planning_data, existing_tcs, planned_tcs, metric_types = db.get_planning_page_data()
-
+    page_data = db.get_planning_page_data()
     return render_template(
         'planning.html',
-        planning_data=planning_data,
-        metric_to_existing_tcs=existing_tcs,
-        metric_to_planned_tcs=planned_tcs,
-        metric_types=metric_types,
-        tc_base_url=current_app.config['TC_BASE_URL'],
-        show_management=session.get('show_management', False)
+        **page_data,
+        tc_base_url=current_app.config.get('TC_BASE_URL', '')
     )
 
 
 @bp.route('/update', methods=['POST'])
+@login_required
 def update_planning_entry():
     """Adds/updates/deletes a planning entry via AJAX."""
     data = request.get_json()
     try:
-        result = db.update_planning_entry(data)
+        result = db.update_planning_entry(data, g.user['user_id'])
         return jsonify(result)
     except Exception as e:
         current_app.logger.error(f"Error updating planning entry: {e}")

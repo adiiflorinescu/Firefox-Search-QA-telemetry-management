@@ -1,12 +1,38 @@
 -- C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/schema.sql
 
 -- Drop tables in reverse order of dependency to avoid foreign key errors.
+DROP TABLE IF EXISTS edit_history;
+DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS coverage_to_metric_link;
 DROP TABLE IF EXISTS planning;
 DROP TABLE IF EXISTS coverage;
 DROP TABLE IF EXISTS glean_metrics;
 DROP TABLE IF EXISTS legacy_metrics;
-DROP TABLE IF EXISTS supported_engines; -- Add this line
+DROP TABLE IF EXISTS supported_engines;
+
+-- NEW: Table for user accounts and roles
+CREATE TABLE users (
+    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    -- Refinement: 'editor' matches the UI, 'planning' was a mismatch.
+    role TEXT NOT NULL CHECK(role IN ('admin', 'editor', 'readonly')),
+    -- Use TIMESTAMP so sqlite3 auto-converts it to a datetime object.
+    created_at TIMESTAMP DEFAULT (datetime('now'))
+);
+
+-- NEW: Table for logging all data modifications
+CREATE TABLE edit_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    timestamp TIMESTAMP DEFAULT (datetime('now')),
+    action TEXT NOT NULL, -- e.g., 'add_coverage', 'set_priority'
+    table_name TEXT,
+    record_pk TEXT, -- The primary key of the affected record
+    details TEXT, -- A description of the change, e.g., "Set priority to P1"
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+);
 
 -- Table for Glean metrics definitions
 CREATE TABLE glean_metrics (
@@ -19,8 +45,8 @@ CREATE TABLE glean_metrics (
     priority TEXT,
     notes TEXT,
     is_deleted BOOLEAN DEFAULT FALSE,
-    created_at DATETIME DEFAULT (datetime('now')),
-    updated_at DATETIME DEFAULT (datetime('now'))
+    created_at TIMESTAMP DEFAULT (datetime('now')),
+    updated_at TIMESTAMP DEFAULT (datetime('now'))
 );
 
 -- Table for Legacy metrics definitions
@@ -34,8 +60,8 @@ CREATE TABLE legacy_metrics (
     priority TEXT,
     notes TEXT,
     is_deleted BOOLEAN DEFAULT FALSE,
-    created_at DATETIME DEFAULT (datetime('now')),
-    updated_at DATETIME DEFAULT (datetime('now'))
+    created_at TIMESTAMP DEFAULT (datetime('now')),
+    updated_at TIMESTAMP DEFAULT (datetime('now'))
 );
 
 -- Table for individual test cases
@@ -44,8 +70,8 @@ CREATE TABLE coverage (
     tc_id TEXT NOT NULL UNIQUE,
     tcid_title TEXT,
     is_deleted BOOLEAN DEFAULT FALSE,
-    created_at DATETIME DEFAULT (datetime('now')),
-    updated_at DATETIME DEFAULT (datetime('now'))
+    created_at TIMESTAMP DEFAULT (datetime('now')),
+    updated_at TIMESTAMP DEFAULT (datetime('now'))
 );
 
 -- Link table to associate test cases with metrics
@@ -70,18 +96,36 @@ CREATE TABLE planning (
     region TEXT,
     engine TEXT,
     is_deleted BOOLEAN DEFAULT FALSE,
-    created_at DATETIME DEFAULT (datetime('now')),
-    updated_at DATETIME DEFAULT (datetime('now')),
+    created_at TIMESTAMP DEFAULT (datetime('now')),
+    updated_at TIMESTAMP DEFAULT (datetime('now')),
     UNIQUE (metric_name, metric_type, tc_id, region, engine)
 );
 
--- NEW: Table for supported search engines for extraction
+-- Table for supported search engines for extraction
 CREATE TABLE supported_engines (
     name TEXT PRIMARY KEY NOT NULL
 );
 
--- Optional: Pre-populate with default engines
-INSERT INTO supported_engines (name) VALUES ('google'), ('bing'), ('duckduckgo'), ('yahoo');
+-- Table for exception TCs
+
+CREATE TABLE exceptions (
+    exception_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tc_id TEXT NOT NULL UNIQUE,
+    title TEXT,
+    metrics TEXT,
+    user_id INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+);
+
+-- Pre-populate with default engines
+INSERT INTO supported_engines (name) VALUES ('google'), ('bing'), ('duckduckgo'), ('yahoo'), ('ecosia'), ('qwant');
+
+-- Pre-populate with default admin user
+-- Password is 'aflorinescu@mozilla.com'
+INSERT INTO users (username, email, password_hash, role) VALUES
+('aflorinescu', 'aflorinescu@mozilla.com', 'scrypt:32768:8:1$dT8ObNeWdzQebexM$571dbd27cc8784e4af7a4259d4d24a701107350293b64abe186d9041eb6440b014d95cce2f24771ea512283324ac3be54d1398430d22ac376dcb6527ef1f87e1', 'admin');
 
 
 -- Triggers to auto-update the 'updated_at' column

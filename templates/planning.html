@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coverage Planning - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* Using the same consistent styling from other pages */
+        /* Styles from your provided file */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         h1, h2 { color: #1a2b4d; }
@@ -14,83 +15,36 @@
         nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
         nav a.active { border-bottom: 2px solid #2c5282; }
         .hidden { display: none; }
-
         .filters-container { display: flex; gap: 1rem; margin-bottom: 2rem; align-items: center; }
-        .filters-container input, .filters-container select, .filters-container button {
-            padding: 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px;
-        }
+        .filters-container input, .filters-container select, .filters-container button { padding: 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
         .filters-container input[type="search"] { flex-grow: 1; }
-        #reset-filters-btn {
-            background-color: #6c757d;
-            color: white;
-            cursor: pointer;
-        }
-        #reset-filters-btn:hover {
-            background-color: #5a6268;
-        }
-
+        #reset-filters-btn { background-color: #6c757d; color: white; cursor: pointer; }
+        #reset-filters-btn:hover { background-color: #5a6268; }
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 12px; text-align: left; border: 1px solid #eef; vertical-align: middle; }
         th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
         tr.metric-row:hover { background-color: #f7f9fc; cursor: pointer; }
-
         .metric-type-badge { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%; color: white; font-weight: bold; font-size: 0.8rem; margin-right: 8px; }
         .glean-badge { background-color: #38a169; }
         .legacy-badge { background-color: #718096; }
-
         .col-metric-name { word-break: break-all; }
         .col-count { width: 100px; text-align: center; }
         .col-priority { width: 150px; }
         .col-priority > div { display: flex; align-items: center; gap: 10px; }
         .col-priority select { flex-grow: 1; padding: 8px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; }
-
-        .notes-icon {
-            font-size: 1.2rem;
-            cursor: pointer;
-            opacity: 0.6;
-            transition: opacity 0.2s;
-        }
+        .notes-icon { font-size: 1.2rem; cursor: pointer; opacity: 0.6; transition: opacity 0.2s; }
         .notes-icon:hover { opacity: 1; }
         .notes-icon.active { color: #2c5282; opacity: 1; }
-
         .details-container { padding: 1rem; background-color: #fdfdff; }
         .details-table { font-size: 0.9em; }
         .details-table th, .details-table td { padding: 8px; }
         .planned-entry { background-color: #fffbea !important; font-style: italic; color: #92400e; }
         .remove-btn { cursor: pointer; color: #c53030; font-weight: bold; }
-
-        .notes-section {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px dashed #ccc;
-        }
+        .notes-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #ccc; }
         .notes-section h4 { margin: 0 0 0.5rem 0; font-size: 1em; color: #333; }
-        .notes-section textarea {
-            width: 100%;
-            min-height: 80px;
-            padding: 8px;
-            font-size: 1em;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            box-sizing: border-box;
-            resize: vertical;
-        }
-
-        .editable-tcid {
-            width: 120px;
-            padding: 4px;
-            font-size: 1em;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            background-color: #fefce8;
-        }
-        .save-tcid-btn {
-            padding: 4px 8px;
-            font-size: 0.9em;
-            margin-left: 8px;
-            cursor: pointer;
-        }
-
+        .notes-section textarea { width: 100%; min-height: 80px; padding: 8px; font-size: 1em; border: 1px solid #d1d5db; border-radius: 4px; box-sizing: border-box; resize: vertical; }
+        .editable-tcid { width: 120px; padding: 4px; font-size: 1em; border: 1px solid #d1d5db; border-radius: 4px; background-color: #fefce8; }
+        .save-tcid-btn { padding: 4px 8px; font-size: 0.9em; margin-left: 8px; cursor: pointer; }
         .add-plan-form input { padding: 6px; font-size: 0.9em; border: 1px solid #ccc; border-radius: 4px; }
         .add-plan-form button { padding: 6px 10px; font-size: 0.9em; cursor: pointer; }
     </style>
@@ -99,24 +53,36 @@
 
 <div class="container">
     <nav>
-        <a href="{{ url_for('management.index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
+        {# DEFINITIVE FIX: Check if g.user exists before accessing its properties #}
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('management.index') }}">Data Management</a>
+            <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
+        {% endif %}
         <a href="{{ url_for('main.metrics') }}">View Metrics</a>
         <a href="{{ url_for('main.reports') }}">Metric Reports</a>
         <a href="{{ url_for('planning.view_planning') }}" class="active">Coverage Planning</a>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('user_management.index') }}">User Management</a>
+        {% endif %}
+
+        {% if g.user %}
+            <a href="{{ url_for('auth.logout') }}" style="float: right;">Logout ({{ g.user.username }})</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" style="float: right;">Login</a>
+        {% endif %}
     </nav>
 
     <h1>Coverage Planning</h1>
 
     <div class="filters-container">
+        <!-- Filters remain the same -->
         <input type="search" id="search-field" placeholder="Search for metrics...">
-
         <input type="text" id="metric-type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
         <datalist id="metric-types-list">
             {% for type in metric_types %}
                 <option value="{{ type.name }}">{{ type.name }} ({{ type.source[0] }})</option>
             {% endfor %}
         </datalist>
-
         <select id="priority-filter">
             <option value="all" selected>All Priorities</option>
             <option value="P1">P1</option>
@@ -146,7 +112,7 @@
         </thead>
         <tbody>
             {% for row in planning_data %}
-            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}" data-specific-metric-type="{{ row.specific_metric_type.lower() }}">
+            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}" data-specific-metric-type="{{ row.specific_metric_type.lower() if row.specific_metric_type else '' }}">
                 <td class="col-metric-name">
                     <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
                     {{ row.metric_name }}
@@ -156,7 +122,8 @@
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
                     <div>
-                        <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
+                        <!-- ROLE-BASED CONTROL: Disable for readonly -->
+                        <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}" {% if not g.user or g.user.role == 'readonly' %}disabled{% endif %}>
                             <option value="-" {% if not row.priority %}selected{% endif %}>-</option>
                             {% for i in range(1, 6) %}
                             <option value="P{{i}}" {% if row.priority == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
@@ -192,24 +159,37 @@
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>
                                     <td>
-                                        <input type="text" class="editable-tcid" value="" placeholder="Add TC ID to promote...">
-                                        <button class="save-tcid-btn">Save</button>
+                                        <!-- ROLE-BASED CONTROL: Hide for readonly -->
+                                        {% if g.user and g.user.role != 'readonly' %}
+                                            <input type="text" class="editable-tcid" value="" placeholder="Add TC ID to promote...">
+                                            <button class="save-tcid-btn">Save</button>
+                                        {% endif %}
                                     </td>
-                                    <td><span class="remove-btn">✖</span></td>
+                                    <td>
+                                        <!-- ROLE-BASED CONTROL: Hide for readonly -->
+                                        {% if g.user and g.user.role != 'readonly' %}
+                                            <span class="remove-btn">✖</span>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
+
+                                <!-- ROLE-BASED CONTROL: Hide for readonly -->
+                                {% if g.user and g.user.role != 'readonly' %}
                                 <tr class="add-plan-form">
                                     <td><input type="text" class="new-plan-engine" placeholder="Engine..."></td>
                                     <td><input type="text" class="new-plan-region" placeholder="Region..."></td>
                                     <td></td>
                                     <td><button class="add-plan-btn">Add Plan</button></td>
                                 </tr>
+                                {% endif %}
                             </tbody>
                         </table>
 
                         <div class="notes-section {% if not row.notes %}hidden{% endif %}">
                             <h4>Notes</h4>
-                            <textarea class="notes-textarea" placeholder="Add planning notes here...">{{ row.notes or '' }}</textarea>
+                            <!-- ROLE-BASED CONTROL: Make readonly -->
+                            <textarea class="notes-textarea" placeholder="Add planning notes here..." {% if not g.user or g.user.role == 'readonly' %}readonly{% endif %}>{{ row.notes or '' }}</textarea>
                         </div>
                     </div>
                 </td>
@@ -220,6 +200,9 @@
 </div>
 
 <script>
+// Your existing JavaScript logic remains the same.
+// The server-side rendering handles the permissions, so the JS
+// will only interact with the elements available to the user.
 document.addEventListener('DOMContentLoaded', function() {
     const table = document.getElementById('planning-table');
     const tcBaseUrl = "{{ tc_base_url }}";
@@ -302,7 +285,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // --- START: DEFINITIVE FIX ---
         // Handle "Save TCID" (Promote) button click
         if (e.target.classList.contains('save-tcid-btn')) {
             const plannedRow = e.target.closest('.planned-entry');
@@ -313,19 +295,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Get region and engine from the row before making the API call
             const region = plannedRow.cells[1].textContent;
             const engine = plannedRow.cells[0].textContent;
 
             updatePlanning({ action: 'promote_to_coverage', planning_id: planningId, new_tc_id: newTcid }).then(data => {
                 if (data.success) {
-                    // 1. Increment the TCID count in the main row
                     const subTableRow = plannedRow.closest('.sub-table-row');
                     const mainRow = subTableRow.previousElementSibling;
                     const countCell = mainRow.querySelector('.tcid-count-cell');
                     countCell.textContent = parseInt(countCell.textContent) + 1;
 
-                    // 2. Create and insert the new "existing" row
                     const newExistingRow = document.createElement('tr');
                     const tcidPrefixStripped = newTcid.match(/\d.*/) ? newTcid.match(/\d.*/)[0] : newTcid;
                     newExistingRow.innerHTML = `
@@ -335,16 +314,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td></td>
                     `;
 
-                    // Insert the new row at the top of the table body
                     const tableBody = plannedRow.closest('tbody');
                     tableBody.prepend(newExistingRow);
-
-                    // 3. Remove the old "planned" row
                     plannedRow.remove();
                 }
             });
         }
-        // --- END: DEFINITIVE FIX ---
     });
 
     async function updatePlanning(payload) {
@@ -366,7 +341,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Handle priority and notes changes
     table.addEventListener('change', function(e) {
         if (e.target.classList.contains('priority-dropdown')) {
             const metricName = e.target.dataset.metricName;
@@ -380,7 +354,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const metricType = subRow.dataset.metricType;
             const notes = e.target.value;
             updatePlanning({ action: 'save_notes', metric_name: metricName, metric_type: metricType, notes: notes });
-            // Update the notes icon state
             const notesIcon = subRow.previousElementSibling.querySelector('.notes-icon');
             notesIcon.classList.toggle('active', notes.trim() !== '');
         }

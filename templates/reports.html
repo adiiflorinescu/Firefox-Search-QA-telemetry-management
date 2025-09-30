@@ -4,289 +4,180 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metric Reports - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* Using the same consistent styling from other pages */
+        /* Consistent styling from other pages */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         h1, h2 { color: #1a2b4d; }
         h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; }
-        h2 { margin-top: 2rem; }
         nav { margin-bottom: 2rem; }
         nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
         nav a.active { border-bottom: 2px solid #2c5282; }
         .hidden { display: none; }
 
-        .search-container {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            align-items: center;
-        }
-        .search-container input, .search-container button {
-            padding: 12px;
-            font-size: 1rem;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        .search-container input {
-            flex-grow: 1;
-        }
-        #reset-filters-btn {
-            background-color: #6c757d;
-            color: white;
-            cursor: pointer;
-        }
-        #reset-filters-btn:hover {
-            background-color: #5a6268;
-        }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .stat-card { background-color: #f9fafb; padding: 1.5rem; border-radius: 8px; text-align: center; border: 1px solid #eef; }
+        .stat-card h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #555; }
+        .stat-card .value { font-size: 2.5rem; font-weight: bold; color: #1a2b4d; }
+        .stat-card .percentage { font-size: 1rem; color: #4a5568; }
 
-        .breakdown-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.5rem;
-            margin-bottom: 2.5rem;
-        }
-        .stat-card {
-            background-color: #f9fafb;
-            border: 1px solid #eef;
-            border-radius: 8px;
-            padding: 1.5rem;
-            text-align: center;
-        }
-        .stat-card .stat-title {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #555;
-            margin: 0 0 0.5rem 0;
-            text-transform: uppercase;
-        }
-        .stat-card .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #1a2b4d;
-            margin: 0;
-        }
+        .filters-container { display: flex; gap: 1rem; margin-bottom: 2rem; align-items: center; }
+        .filters-container input, .filters-container select, .filters-container button { padding: 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        .filters-container input[type="search"] { flex-grow: 1; }
+        #reset-filters-btn { background-color: #6c757d; color: white; cursor: pointer; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 12px; text-align: left; border: 1px solid #eef; vertical-align: middle; }
         th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
-
-        tr.metric-row:hover { background-color: #f7f9fc; cursor: pointer; }
-
-        .metric-type-badge {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            line-height: 20px;
-            text-align: center;
-            border-radius: 50%;
-            color: white;
-            font-weight: bold;
-            font-size: 0.8rem;
-            margin-right: 8px;
-        }
+        tr:hover { background-color: #f7f9fc; }
+        .status-covered { color: #2f855a; font-weight: bold; }
+        .status-uncovered { color: #c53030; font-weight: bold; }
+        .metric-type-badge { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%; color: white; font-weight: bold; font-size: 0.8rem; margin-right: 8px; }
         .glean-badge { background-color: #38a169; }
         .legacy-badge { background-color: #718096; }
-
-        .col-metric-name { word-break: break-all; }
-        .col-count { width: 120px; text-align: center; }
-
-        .details-container { padding: 1rem; background-color: #fdfdff; }
-        .details-table { font-size: 0.9em; }
-        .details-table th, .details-table td { padding: 8px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <nav>
-    <a href="{{ url_for('management.index') }}" id="nav-data-management" class="{% if not show_management %}hidden{% endif %}">Data Management</a>
-    <a href="{{ url_for('main.metrics') }}">View Metrics</a>
-    <a href="{{ url_for('main.reports') }}" class="active">Metric Reports</a>
-    <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
+        {# DEFINITIVE FIX: Check if g.user exists before accessing its properties #}
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('management.index') }}">Data Management</a>
+            <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
+        {% endif %}
+        <a href="{{ url_for('main.metrics') }}">View Metrics</a>
+        <a href="{{ url_for('main.reports') }}" class="active">Metric Reports</a>
+        <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('user_management.index') }}">User Management</a>
+        {% endif %}
+
+        {% if g.user %}
+            <a href="{{ url_for('auth.logout') }}" style="float: right;">Logout ({{ g.user.username }})</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" style="float: right;">Login</a>
+        {% endif %}
     </nav>
 
-    <h1>Metric Reports</h1>
+    <h1>Metric Coverage Report</h1>
 
-    <h2>General Breakdown</h2>
-    <div class="breakdown-grid">
+    <div class="stats-grid">
         <div class="stat-card">
-            <p class="stat-title">Glean Metrics</p>
-            <p class="stat-number">{{ total_glean_metrics }}</p>
+            <h3>Total Glean Metrics</h3>
+            <div class="value">{{ total_glean_metrics }}</div>
         </div>
         <div class="stat-card">
-            <p class="stat-title">Total Glean Tests</p>
-            <p class="stat-number">{{ glean_covered_tcs }}</p>
+            <h3>Glean Coverage</h3>
+            <div class="value">{{ glean_covered_tcs }}</div>
+            <div class="percentage">
+                {% if total_glean_metrics > 0 %}
+                    {{ "%.1f"|format((glean_covered_tcs / total_glean_metrics) * 100) }}%
+                {% else %}
+                    0.0%
+                {% endif %}
+            </div>
         </div>
         <div class="stat-card">
-            <p class="stat-title">Legacy Metrics</p>
-            <p class="stat-number">{{ total_legacy_metrics }}</p>
+            <h3>Total Legacy Metrics</h3>
+            <div class="value">{{ total_legacy_metrics }}</div>
         </div>
         <div class="stat-card">
-            <p class="stat-title">Total Legacy Tests</p>
-            <p class="stat-number">{{ legacy_covered_tcs }}</p>
+            <h3>Legacy Coverage</h3>
+            <div class="value">{{ legacy_covered_tcs }}</div>
+            <div class="percentage">
+                {% if total_legacy_metrics > 0 %}
+                    {{ "%.1f"|format((legacy_covered_tcs / total_legacy_metrics) * 100) }}%
+                {% else %}
+                    0.0%
+                {% endif %}
+            </div>
         </div>
     </div>
 
-
-    <h2>Metric Coverage Details</h2>
-    <div class="search-container">
-        <input type="search" id="search-field" list="suggestions-all" placeholder="Search for metrics...">
-        <datalist id="suggestions-all"></datalist>
-
-        <input type="text" id="type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
+    <div class="filters-container">
+        <input type="search" id="search-field" placeholder="Search for metrics...">
+        <input type="text" id="metric-type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
         <datalist id="metric-types-list">
             {% for type in metric_types %}
                 <option value="{{ type.name }}">{{ type.name }} ({{ type.source[0] }})</option>
             {% endfor %}
         </datalist>
-
+        <select id="coverage-filter">
+            <option value="all" selected>All Coverage Status</option>
+            <option value="covered">Covered</option>
+            <option value="uncovered">Uncovered</option>
+        </select>
         <button id="reset-filters-btn">Reset</button>
     </div>
 
     <table id="report-table">
         <thead>
             <tr>
-                <th class="col-metric-name">Metric Name</th>
-                <th class="col-count">TCID Count</th>
+                <th>Metric Name</th>
+                <th>Coverage Status</th>
+                <th>TCID Count</th>
             </tr>
         </thead>
         <tbody>
             {% for row in report_data %}
-            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
-                <td class="col-metric-name">
-                    <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type|capitalize|first }}</span>
-                    {{ row.metric_name }}
+            <tr class="metric-row" data-metric-name="{{ row.name.lower() }}" data-specific-metric-type="{{ row.specific_type.lower() if row.specific_type else '' }}" data-coverage-status="{{ 'covered' if row.covered else 'uncovered' }}">
+                <td>
+                    <span class="metric-type-badge {{ row.type.lower() }}-badge">{{ row.type[0] }}</span>
+                    {{ row.name }}
                 </td>
-                <td class="col-count">{{ row.tcid_count }}</td>
-            </tr>
-            <tr class="sub-table-row hidden" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
-                <td colspan="2">
-                    <div class="details-container">
-                        {% set tcids = metric_to_tcids.get((row.metric_name, row.metric_type), []) %}
-                        {% if tcids %}
-                        <table class="details-table">
-                            <thead>
-                                <tr>
-                                    <th>TC ID</th>
-                                    <th>Title</th>
-                                    <th>Engine</th>
-                                    <th>Region</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for tcid, tcid_title, region, engine in tcids %}
-                                <tr>
-                                    <td><a href="{{ tc_base_url }}{{ tcid | strip_tcid_prefix }}" target="_blank">{{ tcid }}</a></td>
-                                    <td>{{ tcid_title or 'N/A' }}</td>
-                                    <td>{{ engine or 'N/A' }}</td>
-                                    <td>{{ region or 'N/A' }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                        {% else %}
-                        <p>No TCID details available for this metric.</p>
-                        {% endif %}
-                    </div>
+                <td>
+                    <span class="status-{{ 'covered' if row.covered else 'uncovered' }}">
+                        {{ 'Covered' if row.covered else 'Not Covered' }}
+                    </span>
                 </td>
+                <td>{{ row.tcid_count }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const table = document.getElementById('report-table');
+document.addEventListener('DOMContentLoaded', function() {
+    const searchField = document.getElementById('search-field');
+    const typeFilter = document.getElementById('metric-type-filter');
+    const coverageFilter = document.getElementById('coverage-filter');
+    const resetButton = document.getElementById('reset-filters-btn');
+    const metricRows = document.querySelectorAll('.metric-row');
 
-        table.addEventListener('click', function(e) {
-            if (e.target.closest('.sub-table-row')) {
-                return;
-            }
-            const row = e.target.closest('.metric-row');
-            if (row) {
-                const metricName = row.dataset.metricName;
-                const metricType = row.dataset.metricType;
-                const subTableRow = table.querySelector(`.sub-table-row[data-metric-name="${metricName}"][data-metric-type="${metricType}"]`);
-                if (subTableRow) {
-                    subTableRow.classList.toggle('hidden');
-                }
-            }
+    function filterTable() {
+        const searchTerm = searchField.value.trim().toLowerCase();
+        const selectedType = typeFilter.value.trim().toLowerCase();
+        const selectedCoverage = coverageFilter.value;
+
+        metricRows.forEach(row => {
+            const metricName = row.dataset.metricName;
+            const specificMetricType = row.dataset.specificMetricType;
+            const coverageStatus = row.dataset.coverageStatus;
+
+            const matchesSearch = metricName.includes(searchTerm);
+            const matchesType = (selectedType === '') || (specificMetricType.includes(selectedType));
+            const matchesCoverage = (selectedCoverage === 'all') || (coverageStatus === selectedCoverage);
+
+            const isVisible = matchesSearch && matchesType && matchesCoverage;
+            row.classList.toggle('hidden', !isVisible);
         });
+    }
 
-        function fetchSuggestions(type, datalistId) {
-            fetch(`/search-suggestions?type=${type}`)
-                .then(response => response.json())
-                .then(data => {
-                    const datalist = document.getElementById(datalistId);
-                    if (!datalist) return;
-                    datalist.innerHTML = '';
-                    data.forEach(item => {
-                        const option = document.createElement('option');
-                        option.value = item;
-                        datalist.appendChild(option);
-                    });
-                });
-        }
-        fetchSuggestions('metrics', 'suggestions-all');
+    function resetFilters() {
+        searchField.value = '';
+        typeFilter.value = '';
+        coverageFilter.value = 'all';
+        filterTable();
+    }
 
-        const searchField = document.getElementById('search-field');
-        const typeFilter = document.getElementById('type-filter');
-        const resetButton = document.getElementById('reset-filters-btn');
-        const metricRows = document.querySelectorAll('#report-table .metric-row');
-
-        function filterReport() {
-            const searchTerm = searchField.value.trim().toLowerCase();
-            const selectedType = typeFilter.value.trim().toLowerCase();
-
-            metricRows.forEach(row => {
-                const metricName = row.dataset.metricName.toLowerCase();
-                const metricType = row.dataset.metricType;
-
-                // On this page, we don't have specific types, so we check if the search term
-                // is part of 'glean' or 'legacy'. This is a simple check.
-                const matchesSearch = metricName.includes(searchTerm);
-                const matchesType = (selectedType === '') || (metricType.includes(selectedType));
-
-                const isVisible = matchesSearch && matchesType;
-                row.classList.toggle('hidden', !isVisible);
-
-                const subRow = table.querySelector(`.sub-table-row[data-metric-name="${row.dataset.metricName}"][data-metric-type="${metricType}"]`);
-                if (subRow && !isVisible) {
-                    subRow.classList.add('hidden');
-                }
-            });
-        }
-
-        function resetFilters() {
-            searchField.value = '';
-            typeFilter.value = '';
-            filterReport();
-        }
-
-        searchField.addEventListener('input', filterReport);
-        typeFilter.addEventListener('input', filterReport);
-        resetButton.addEventListener('click', resetFilters);
-
-        document.addEventListener('keydown', function(event) {
-            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
-                event.preventDefault();
-                fetch("{{ url_for('management.toggle_management_view') }}", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.reload();
-                    }
-                });
-            }
-        });
-    });
+    searchField.addEventListener('input', filterTable);
+    typeFilter.addEventListener('input', filterTable);
+    coverageFilter.addEventListener('change', filterTable);
+    resetButton.addEventListener('click', resetFilters);
+});
 </script>
 
 </body>

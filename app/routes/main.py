@@ -1,14 +1,17 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/routes/main.py
 
-from flask import Blueprint, render_template, session, jsonify, current_app
+from flask import Blueprint, render_template, jsonify, current_app, session, request, flash, redirect, url_for, g
 from ..services import database as db
+from ..utils.decorators import login_required
 
 bp = Blueprint('main', __name__)
 
-@bp.route('/')
-def index():
-    """Redirects to the main metrics view."""
-    return render_template('redirect.html', endpoint='main.metrics')
+
+@bp.before_request
+@login_required
+def before_request():
+    """Protects all routes in this blueprint."""
+    pass
 
 
 @bp.route('/metrics')
@@ -27,16 +30,15 @@ def metrics():
         glean_count=len(glean_metrics),
         legacy_count=len(legacy_metrics),
         coverage_count=len(coverage_data),
-        show_management=session.get('show_management', False),
-        tc_base_url=current_app.config.get('TC_BASE_URL', '')
+        tc_base_url=current_app.config.get('TC_BASE_URL', ''),
+        show_management=session.get('show_management', False)
     )
 
 
 @bp.route('/reports')
 def reports():
     """Renders the reports page."""
-    report_data, metric_types = db.get_report_data()
-    metric_to_tcids = db.get_metric_to_tcid_map()
+    report_data, metric_types, metric_to_tcids = db.get_report_data()
     stats = db.get_general_stats()
 
     return render_template(
@@ -48,19 +50,25 @@ def reports():
         total_legacy_metrics=stats['total_legacy_metrics'],
         glean_covered_tcs=stats['glean_covered_tcs'],
         legacy_covered_tcs=stats['legacy_covered_tcs'],
-        show_management=session.get('show_management', False),
         tc_base_url=current_app.config.get('TC_BASE_URL', '')
     )
+
+
+@bp.route('/activity-log')
+@login_required
+def activity_log():
+    """Displays a searchable log of all user activities."""
+    if g.user['role'] != 'admin':
+        flash("You don't have permission to view this page.", "error")
+        return redirect(url_for('main.metrics'))
+
+    search_term = request.args.get('q', '').strip()
+    history = db.get_history(search_term=search_term)
+    return render_template('activity_log.html', history=history)
 
 
 @bp.route('/search-suggestions')
 def search_suggestions():
     """Provides a JSON list of search terms for autofill."""
-    suggestion_type = 'all'
-    suggestions = db.get_search_suggestions(suggestion_type)
+    suggestions = db.get_search_suggestions()
     return jsonify(suggestions)
-
-# --- DEFINITIVE FIX ---
-# The template filters below have been removed because they are already
-# registered globally in app/__init__.py. Keeping them here causes
-# a name collision and prevents the application from starting.

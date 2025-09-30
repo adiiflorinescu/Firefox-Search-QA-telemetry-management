@@ -14,13 +14,14 @@ def strip_tcid_prefix(tcid):
 
 def sort_details(details):
     """
-    Sorts a list of TCID details (dictionaries) for the planning sub-table.
+    Sorts a list of TCID details (dictionaries or Row objects) for the planning sub-table.
     - Sorts by engine, then region.
     - 'NoEngine' and 'NoRegion' are sorted last.
     """
     def sort_key(item):
-        engine = item.get('engine')
-        region = item.get('region')
+        # --- DEFINITIVE FIX: Use index access for sqlite3.Row objects ---
+        engine = item['engine']
+        region = item['region']
         return (
             engine is None or engine == 'NoEngine',
             engine,

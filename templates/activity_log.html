@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Log</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; color: #1a2b4d; }
+        nav { margin-bottom: 2rem; }
+        nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
+        nav a.active { border-bottom: 2px solid #2c5282; }
+        .search-container { margin-bottom: 2rem; display: flex; }
+        .search-container input { flex-grow: 1; padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 12px; text-align: left; border: 1px solid #eef; word-wrap: break-word; }
+        th { background-color: #f2f4f8; }
+        td { font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <nav>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('management.index') }}">Data Management</a>
+            <a href="{{ url_for('main.activity_log') }}" class="active">Activity Log</a>
+        {% endif %}
+        <a href="{{ url_for('main.metrics') }}">View Metrics</a>
+        <a href="{{ url_for('main.reports') }}">Metric Reports</a>
+        <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('user_management.index') }}">User Management</a>
+        {% endif %}
+        {% if g.user %}
+            <a href="{{ url_for('auth.logout') }}" style="float: right;">Logout ({{ g.user.username }})</a>
+        {% endif %}
+    </nav>
+
+    <h1>Activity Log</h1>
+
+    <div class="search-container">
+        <form method="get" style="width: 100%;">
+            <input type="search" name="q" placeholder="Search all fields (user, action, details...)" value="{{ request.args.get('q', '') }}">
+        </form>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">Timestamp</th>
+                <th style="width: 10%;">User</th>
+                <th style="width: 15%;">Action</th>
+                <th style="width: 15%;">Table</th>
+                <th style="width: 15%;">Record PK</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in history %}
+            <tr>
+                <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ entry.username }}</td>
+                <td>{{ entry.action }}</td>
+                <td>{{ entry.table_name or 'N/A' }}</td>
+                <td>{{ entry.record_pk or 'N/A' }}</td>
+                <td>{{ entry.details or 'N/A' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center;">No activity found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>

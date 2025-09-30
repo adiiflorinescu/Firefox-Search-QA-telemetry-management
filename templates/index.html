@@ -5,100 +5,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Data - Dashboard</title>
     <style>
-        /* Styles are largely the same, kept for consistency */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         h1, h2, h3 { color: #1a2b4d; }
         h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; }
-        /* MODIFIED: Smaller section headers */
         h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
         nav { margin-bottom: 2rem; }
         nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
         nav a.active { border-bottom: 2px solid #2c5282; }
         details { border: 1px solid #ddd; border-radius: 5px; margin-bottom: 1rem; }
         summary { font-weight: bold; font-size: 1.2rem; padding: 1rem; cursor: pointer; background-color: #f9fafb; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { padding: 12px; text-align: left; border: 1px solid #eef; word-wrap: break-word; }
-        th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
-        tr:hover { background-color: #f7f9fc; }
-        .col-main-id { white-space: nowrap; }
-
-        /* MODIFIED: More compact form sections */
-        .form-section {
-            padding: 1rem; /* Reduced padding */
-            border: 1px solid #eef;
-            border-radius: 5px;
-            background: #fdfdff;
-        }
-        /* NEW: Grid layout for side-by-side forms */
-        .form-grid-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem; /* MODIFIED: Reduced gap */
-            padding: 0.5rem 1rem 1rem 1rem; /* MODIFIED: Reduced padding */
-        }
-        /* MODIFIED: More compact form elements */
+        .form-section { padding: 1rem; border: 1px solid #eef; border-radius: 5px; background: #fdfdff; }
+        .form-grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 0.5rem 1rem 1rem 1rem; }
+        .form-grid-container.single-col { grid-template-columns: 1fr; }
         label { font-size: 0.9rem; font-weight: 600; display: block; margin-bottom: 0.25rem; }
-        input[type="text"], textarea, input[type="file"] {
-            width: 100%;
-            padding: 8px; /* Reduced padding */
-            font-size: 0.95rem;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-            margin-top: 0;
-            margin-bottom: 0.75rem; /* MODIFIED: Increased margin slightly */
-        }
-        /* NEW: Styles for radio buttons */
+        input[type="text"], input[type="file"], textarea { width: 100%; padding: 8px; font-size: 0.95rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-top: 0; margin-bottom: 0.75rem; }
         .radio-group { margin-bottom: 0.75rem; }
         .radio-group label { display: inline-block; margin-right: 1rem; font-weight: normal; }
         .radio-group input[type="radio"] { margin-right: 0.25rem; }
-
-        /* NEW: Compact paragraph style for forms */
-        .form-section p {
-            font-size: 0.85rem;
-            margin: 0 0 0.5rem 0;
-            color: #555;
-        }
         button { background-color: #2c5282; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
         button:hover { background-color: #1a365d; }
-        .hidden { display: none; }
         .flash-message { padding: 1rem; margin-bottom: 1rem; border-radius: 5px; color: white; }
         .flash-success { background-color: #2f855a; }
         .flash-error { background-color: #c53030; }
-        .upload-results { border: 1px solid #ccc; border-radius: 5px; padding: 1rem; margin-top: 1rem; background-color: #f9f9f9; }
-        .upload-results h4 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
-        .upload-results .success { color: #2f855a; }
-        .upload-results .errors { color: #c53030; }
-        .upload-results ul { padding-left: 20px; max-height: 150px; overflow-y: auto; }
-
-        /* --- NEW STYLES FOR ENGINE MANAGEMENT --- */
-        .engine-list { list-style: none; padding: 0; }
-        .engine-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eef; }
-        .engine-list li:last-child { border-bottom: none; }
-        .delete-engine-btn { background-color: #e53e3e; font-size: 0.8rem; padding: 4px 8px; }
-        .delete-engine-btn:hover { background-color: #c53030; }
+        .engine-list, .exception-list { list-style: none; padding: 0; }
+        .engine-list li, .exception-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eef; }
+        .delete-engine-btn, .delete-exception-btn { background-color: #e53e3e; font-size: 0.8rem; padding: 4px 8px; }
         .engine-form { display: flex; gap: 10px; margin-top: 1rem; }
         .engine-form input { flex-grow: 1; margin-bottom: 0; }
-        .engine-form button { flex-shrink: 0; }
-        #engine-message { margin-top: 0.5rem; font-size: 0.9rem; }
-        /* --- END NEW STYLES --- */
+        .exception-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        .exception-table th, .exception-table td { padding: 8px; text-align: left; border-bottom: 1px solid #eef; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <nav>
-    {# DEFINITIVE FIX: Use the correct endpoint 'management.index' #}
-    <a href="{{ url_for('management.index') }}" id="nav-data-management" class="active {% if not show_management %}hidden{% endif %}">Data Management</a>
-    <a href="{{ url_for('main.metrics') }}">View Metrics</a>
-    <a href="{{ url_for('main.reports') }}">Metric Reports</a>
-    <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('management.index') }}" class="active">Data Management</a>
+            <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
+        {% endif %}
+        <a href="{{ url_for('main.metrics') }}">View Metrics</a>
+        <a href="{{ url_for('main.reports') }}">Metric Reports</a>
+        <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('user_management.index') }}">User Management</a>
+        {% endif %}
+        {% if g.user %}
+            <a href="{{ url_for('auth.logout') }}" style="float: right;">Logout ({{ g.user.username }})</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" style="float: right;">Login</a>
+        {% endif %}
     </nav>
 
     <h1>Data Management</h1>
 
-    <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -107,64 +68,94 @@
       {% endif %}
     {% endwith %}
 
-    <!-- Manage Coverage Section -->
-    <details id="manage-coverage-details">
+    <details id="manage-coverage-details" open>
         <summary>Manage Coverage</summary>
-        <!-- MODIFIED: Wrapped forms in a grid container -->
         <div class="form-grid-container">
             <div class="form-section">
                 <h3>Create New Coverage Entry</h3>
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.add_coverage' #}
                 <form action="{{ url_for('management.add_coverage') }}" method="post">
                     <label for="tc_id">Test Case ID</label>
                     <input type="text" id="tc_id" name="tc_id" required>
                     <label for="tcid_title">TCID Title (Optional)</label>
                     <input type="text" id="tcid_title" name="tcid_title">
-
-                    <!-- MODIFIED: Added Region and Engine fields -->
-                    <label for="region">Region (Optional)</label>
+                    <label for="region">Region (Optional, comma-separated)</label>
                     <input type="text" id="region" name="region" placeholder="e.g., US, DE">
-                    <label for="engine">Engine (Optional)</label>
-                    <input type="text" id="engine" name="engine" placeholder="e.g., Google, Bing">
-
+                    <label for="engine">Engine (Optional, comma-separated)</label>
+                    <input type="text" id="engine" name="engine" placeholder="e.g., google, bing">
                     <label>Metric Type</label>
                     <div class="radio-group">
-                        <label><input type="radio" name="metric_type" value="glean" checked> Glean</label>
-                        <label><input type="radio" name="metric_type" value="legacy"> Legacy</label>
+                        <label><input type="radio" name="metric_type" value="Glean" checked> Glean</label>
+                        <label><input type="radio" name="metric_type" value="Legacy"> Legacy</label>
                     </div>
-
                     <label for="metrics">Associated Metrics (comma-separated)</label>
-                    <textarea id="metrics" name="metrics" rows="3" required placeholder="e.g., glean.app.startup.time, glean.another.metric, ..."></textarea>
-                    <datalist id="suggestions-metrics"></datalist>
-
-                    <button type="submit">Add Validated Entry</button>
+                    <textarea id="metrics" name="metrics" rows="3" required placeholder="e.g., glean.app.startup.time, glean.another.metric"></textarea>
+                    <button type="submit">Add Entry</button>
                 </form>
             </div>
             <div class="form-section">
-                <h3>Upload Coverage from CSV</h3>
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.upload_coverage_csv' #}
-                <form action="{{ url_for('management.upload_coverage_csv') }}" method="post" enctype="multipart/form-data">
-                    <!-- MODIFIED: Updated instructions for the new columns -->
-                    <p>Upload a CSV with columns: <code>tc_id</code>, <code>tcid_title</code>, <code>metrics</code>, <code>metric_type</code>, <code>region</code>, <code>engine</code>.</p>
-                    <p>The 'metric_type' column must contain 'glean' or 'legacy'.</p>
-
-                    <input type="file" name="file" accept=".csv" required>
-                    <button type="submit">Upload Validated CSV</button>
+                <h3>Bulk Import Coverage from CSV</h3>
+                <form action="{{ url_for('management.bulk_import_coverage') }}" method="post" enctype="multipart/form-data">
+                    <label for="coverage_file">Upload CSV File (TC_ID, Title, Metric, Type, Region, Engine)</label>
+                    <input type="file" id="coverage_file" name="file" accept=".csv" required>
+                    <button type="submit">Bulk Import Coverage</button>
                 </form>
             </div>
         </div>
-        <div id="coverage-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
     </details>
 
-    <!-- ... (rest of the file is unchanged) ... -->
+    <details id="manage-exceptions-details">
+        <summary>Manage Exceptions</summary>
+        <div class="form-grid-container single-col">
+            <div class="form-section">
+                <h3>Add New Exception</h3>
+                <p>TCIDs added here will be completely ignored by all data imports and will not appear in any metrics, reports, or planning pages.</p>
+                <form action="{{ url_for('management.add_exception') }}" method="post">
+                    <label for="exception_tc_id">Test Case ID</label>
+                    <input type="text" id="exception_tc_id" name="tc_id" required>
+                    <label for="exception_title">Title / Reason for Exception (Optional)</label>
+                    <input type="text" id="exception_title" name="title">
+                    <label for="exception_metrics">Associated Metrics (Optional, for reference)</label>
+                    <input type="text" id="exception_metrics" name="metrics" placeholder="e.g., search.telemetry.something">
+                    <button type="submit">Add Exception</button>
+                </form>
+            </div>
+            <div class="form-section">
+                <details>
+                    <summary>View Current Exceptions ({{ exceptions|length }})</summary>
+                    <table class="exception-table">
+                        <thead>
+                            <tr>
+                                <th>TCID</th>
+                                <th>Title / Reason</th>
+                                <th>Metrics</th>
+                                <th>Date Added</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for exc in exceptions %}
+                            <tr>
+                                <td>{{ exc.tc_id }}</td>
+                                <td>{{ exc.title or 'N/A' }}</td>
+                                <td>{{ exc.metrics or 'N/A' }}</td>
+                                <td>{{ exc.created_at.strftime('%Y-%m-%d') }}</td>
+                                <td>
+                                    <button class="delete-exception-btn" data-id="{{ exc.exception_id }}">Delete</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </details>
+            </div>
+        </div>
+    </details>
 
-    <!-- Manage Glean Metrics -->
     <details id="manage-glean-details">
         <summary>Manage Glean Metrics</summary>
         <div class="form-grid-container">
             <div class="form-section">
                 <h3>Add New Glean Metric</h3>
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.add_glean_metric' #}
                 <form action="{{ url_for('management.add_glean_metric') }}" method="post">
                     <label for="glean_name">Glean Name</label>
                     <input type="text" id="glean_name" name="glean_name" required>
@@ -176,25 +167,21 @@
                 </form>
             </div>
             <div class="form-section">
-                <h3>Upload Glean Metrics from CSV</h3>
-                <p>Upload a CSV with columns: <code>glean_name</code>, <code>metric_type</code>, <code>expiration</code>, <code>description</code>, <code>search_metric</code>, <code>legacy_correspondent</code>.</p>
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.upload_glean_csv' #}
-                <form action="{{ url_for('management.upload_glean_csv') }}" method="post" enctype="multipart/form-data">
-                    <input type="file" name="file" accept=".csv" required>
-                    <button type="submit">Upload Glean CSV</button>
+                <h3>Bulk Import Glean Metrics from CSV</h3>
+                <form action="{{ url_for('management.bulk_import_glean') }}" method="post" enctype="multipart/form-data">
+                    <label for="glean_file">Upload CSV File (Name, Type, Description)</label>
+                    <input type="file" id="glean_file" name="file" accept=".csv" required>
+                    <button type="submit">Bulk Import Glean</button>
                 </form>
             </div>
         </div>
-        <div id="glean-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
     </details>
 
-    <!-- Manage Legacy Metrics -->
     <details id="manage-legacy-details">
         <summary>Manage Legacy Metrics</summary>
         <div class="form-grid-container">
             <div class="form-section">
                 <h3>Add New Legacy Metric</h3>
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.add_legacy_metric' #}
                 <form action="{{ url_for('management.add_legacy_metric') }}" method="post">
                     <label for="legacy_name">Legacy Name</label>
                     <input type="text" id="legacy_name" name="legacy_name" required>
@@ -206,49 +193,50 @@
                 </form>
             </div>
             <div class="form-section">
-                <h3>Upload Legacy Metrics from CSV</h3>
-                <p>Upload a CSV with columns: <code>legacy_name</code>, <code>metric_type</code>, <code>expiration</code>, <code>description</code>, <code>search_metric</code>, <code>glean_correspondent</code>.</p>
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.upload_legacy_csv' #}
-                <form action="{{ url_for('management.upload_legacy_csv') }}" method="post" enctype="multipart/form-data">
-                    <input type="file" name="file" accept=".csv" required>
-                    <button type="submit">Upload Legacy CSV</button>
+                <h3>Bulk Import Legacy Metrics from CSV</h3>
+                <form action="{{ url_for('management.bulk_import_legacy') }}" method="post" enctype="multipart/form-data">
+                    <label for="legacy_file">Upload CSV File (Name, Type, Description)</label>
+                    <input type="file" id="legacy_file" name="file" accept=".csv" required>
+                    <button type="submit">Bulk Import Legacy</button>
                 </form>
             </div>
         </div>
-        <div id="legacy-upload-results-container" class="upload-results hidden" style="margin: 0 1rem 1rem 1rem;"></div>
     </details>
 
-    <!-- MODIFIED: Section for extracting probes and metrics -->
-    <details id="extract-probes-details">
-        <summary>Extract Data from Test Cases</summary>
-        <div class="form-section" style="padding: 1rem 1rem 1.5rem;">
-            <h3>Upload Test Case CSV to Extract Probes</h3>
-            <p>Upload a CSV file (e.g., <code>extract_data.csv</code>) with columns: <code>ID</code>, <code>Title</code>, <code>Steps</code>, and <code>Steps (Expected Result)</code>.</p>
-            <p>The tool will find all telemetry probes and return a new CSV with a "Found Probes" column appended.</p>
-            {# DEFINITIVE FIX: Use the correct endpoint 'management.extract_probes' #}
-            <form action="{{ url_for('management.extract_probes') }}" method="post" enctype="multipart/form-data">
-                <input type="file" name="file" accept=".csv" required>
-                <button type="submit">Extract Probes</button>
-            </form>
-
-            <hr style="margin: 1.5rem 0;">
-
-            <h3>Upload Test Case CSV to Extract Probes</h3>
-            <p>Upload a CSV file with columns: <code>ID</code>, <code>Title</code>, and <code>rotation</code>.</p>
-            <p>The tool will parse the title for region/engine and the rotation for metrics, returning an enhanced CSV.</p>
-            <form action="{{ url_for('management.extract_from_rotation') }}" method="post" enctype="multipart/form-data">
-                <input type="file" name="file" accept=".csv" required>
-                <button type="submit">Extract from Rotation</button>
-            </form>
+    <details id="manage-probe-extraction">
+        <summary>Probe Extraction Tool</summary>
+        <div class="form-grid-container single-col">
+            <div class="form-section">
+                <h3>Extract Probes from TestRail Export</h3>
+                <p>Upload a CSV exported from TestRail. The tool will parse all columns to find probes, regions, and engines.</p>
+                <form action="{{ url_for('management.extract_probes') }}" method="post" enctype="multipart/form-data">
+                    <label for="testrail_file">Upload TestRail CSV Export</label>
+                    <input type="file" id="testrail_file" name="file" accept=".csv" required>
+                    <button type="submit">Extract and Download</button>
+                </form>
+            </div>
         </div>
     </details>
 
-    <!-- NEW SECTION: Manage Supported Engines -->
+    <details id="manage-rotation-extraction">
+        <summary>Extract from Rotation</summary>
+        <div class="form-grid-container single-col">
+            <div class="form-section">
+                <h3>Extract Coverage from Rotation CSV</h3>
+                <p>Upload a CSV with columns <strong>tcsid, title, rotation</strong>. The tool will auto-detect region/engine from the title and extract metrics from the rotation column, returning a new downloadable CSV with the found data.</p>
+                <form action="{{ url_for('management.extract_from_rotation') }}" method="post" enctype="multipart/form-data">
+                    <label for="rotation_file">Upload Rotation CSV</label>
+                    <input type="file" id="rotation_file" name="file" accept=".csv" required>
+                    <button type="submit">Extract and Download</button>
+                </form>
+            </div>
+        </div>
+    </details>
+
     <details id="manage-engines-details">
         <summary>Manage Supported Engines</summary>
         <div class="form-section" style="padding: 1rem 1rem 1.5rem;">
-            <h3>Current Engines for Extraction</h3>
-            <p>This list determines which engines are detected by the "Extract from Rotation" tool.</p>
+            <h3>Current Engines</h3>
             <ul id="engine-list" class="engine-list">
                 {% for engine in supported_engines %}
                 <li data-engine-name="{{ engine.name }}">
@@ -267,159 +255,51 @@
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Datalist suggestions
-        function fetchSuggestions(type, datalistId) {
-            fetch(`/search-suggestions?type=${type}`)
-                .then(response => response.json())
-                .then(data => {
-                    const datalist = document.getElementById(datalistId);
-                    if (!datalist) return;
-                    datalist.innerHTML = '';
-                    data.forEach(item => {
-                        const option = document.createElement('option');
-                        option.value = item;
-                        datalist.appendChild(option);
-                    });
-                });
-        }
-        // Fetch all metrics for the new metrics input
-        fetchSuggestions('metrics', 'suggestions-metrics');
-
-        // Generic function to display upload results
-        function displayUploadResults(results, containerId, detailsId) {
-            if (!results) return;
-
-            const container = document.getElementById(containerId);
-            const details = document.getElementById(detailsId);
-            if (!container || !details) return;
-
-            let content = `<h4>CSV Import Results</h4>`;
-            content += `<p class="success"><strong>Successfully Imported:</strong> ${results.inserted} rows</p>`;
-
-            if (results.skipped && results.skipped.length > 0) {
-                content += `<p class="errors"><strong>Skipped:</strong> ${results.skipped.length} rows</p><ul>`;
-                results.skipped.forEach(errorMsg => {
-                    content += `<li>${errorMsg}</li>`;
-                });
-                content += `</ul>`;
-            }
-
-            container.innerHTML = content;
-            container.classList.remove('hidden');
-
-            // Ensure the parent <details> element is open.
-            details.open = true;
-
-            // Use a small timeout to ensure the browser has finished its own rendering/scrolling
-            // before we command it to scroll to our results.
-            setTimeout(() => {
-                container.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 100); // A 100ms delay is usually sufficient.
-        }
-
-        // Display results for all three possible upload types
-        displayUploadResults({{ coverage_upload_results | tojson }}, 'coverage-upload-results-container', 'manage-coverage-details');
-        displayUploadResults({{ glean_upload_results | tojson }}, 'glean-upload-results-container', 'manage-glean-details');
-        displayUploadResults({{ legacy_upload_results | tojson }}, 'legacy-upload-results-container', 'manage-legacy-details');
-
-        // --- Scroll to section on expand ---
-        document.querySelectorAll('details').forEach((detailsElement) => {
-            detailsElement.addEventListener('toggle', (event) => {
-                // Only scroll into view if the section was just opened
-                if (detailsElement.open) {
-                    // A small timeout can help ensure the browser has time to render the content
-                    // before scrolling, preventing jitter.
-                    setTimeout(() => {
-                        detailsElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 100);
-                }
-            });
-        });
-
-        // --- MODIFIED: Keyboard shortcut now calls the backend to update the session ---
-        document.addEventListener('keydown', function(event) {
-            if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
-                event.preventDefault();
-                // Call the backend to toggle the session variable
-                {# DEFINITIVE FIX: Use the correct endpoint 'management.toggle_management_view' #}
-                fetch("{{ url_for('management.toggle_management_view') }}", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Reload the page to apply the new session state everywhere
-                        window.location.reload();
-                    }
-                });
-            }
-        });
-
-        // --- NEW SCRIPT FOR ENGINE MANAGEMENT ---
-        const addEngineForm = document.getElementById('add-engine-form');
-        const engineList = document.getElementById('engine-list');
-        const engineMessage = document.getElementById('engine-message');
-
-        addEngineForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const newEngineInput = document.getElementById('new-engine-name');
-            const engineName = newEngineInput.value.trim();
-            if (!engineName) return;
-
-            const formData = new FormData();
-            formData.append('name', engineName);
-
-            fetch("{{ url_for('management.add_engine') }}", {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Add to list dynamically
-                    const li = document.createElement('li');
-                    li.dataset.engineName = data.name;
-                    li.innerHTML = `<span>${data.name}</span> <button class="delete-engine-btn" data-name="${data.name}">Delete</button>`;
-                    engineList.appendChild(li);
-                    newEngineInput.value = '';
-                    engineMessage.textContent = `Successfully added '${data.name}'.`;
-                    engineMessage.style.color = '#2f855a';
-                } else {
-                    engineMessage.textContent = `Error: ${data.error}`;
-                    engineMessage.style.color = '#c53030';
-                }
-            });
-        });
-
-        engineList.addEventListener('click', function(e) {
-            if (e.target.classList.contains('delete-engine-btn')) {
-                const engineName = e.target.dataset.name;
-                if (!confirm(`Are you sure you want to delete the engine '${engineName}'?`)) return;
-
-                const formData = new FormData();
-                formData.append('name', engineName);
-
+document.addEventListener('DOMContentLoaded', function() {
+    // JavaScript for deleting engines and exceptions
+    document.querySelectorAll('.delete-engine-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const engineName = this.dataset.name;
+            if (confirm(`Are you sure you want to delete the engine "${engineName}"?`)) {
                 fetch("{{ url_for('management.delete_engine') }}", {
                     method: 'POST',
-                    body: formData
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `name=${encodeURIComponent(engineName)}`
+                }).then(() => window.location.reload());
+            }
+        });
+    });
+
+    document.getElementById('add-engine-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const newEngineName = document.getElementById('new-engine-name').value;
+        fetch("{{ url_for('management.add_engine') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `name=${encodeURIComponent(newEngineName)}`
+        }).then(() => window.location.reload());
+    });
+
+    document.querySelectorAll('.delete-exception-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const exceptionId = this.dataset.id;
+            const row = this.closest('tr');
+            if (confirm('Are you sure you want to delete this exception?')) {
+                fetch(`/manage/delete/exceptions/${exceptionId}`, {
+                    method: 'POST',
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Remove from list dynamically
-                        e.target.closest('li').remove();
-                        engineMessage.textContent = `Successfully deleted '${engineName}'.`;
-                        engineMessage.style.color = '#2f855a';
+                        row.remove();
                     } else {
-                        engineMessage.textContent = `Error: ${data.error}`;
-                        engineMessage.style.color = '#c53030';
+                        alert('Error: Could not delete exception. ' + (data.error || ''));
                     }
                 });
             }
         });
     });
+});
 </script>
 
 </body>
