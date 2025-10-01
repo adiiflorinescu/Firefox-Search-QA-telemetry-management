@@ -228,7 +228,7 @@ def get_metric_status_details(metric_type, metric_name):
     # 3. Get planned coverage
     planned_coverage = db.execute(
         "SELECT region, engine FROM planning WHERE metric_name = ? AND metric_type = ? AND is_deleted = FALSE",
-        (metric_name, metric_type.lower())
+        (metric_name, metric_type.capitalize())
     ).fetchall()
 
     return {
@@ -237,6 +237,7 @@ def get_metric_status_details(metric_type, metric_name):
         'existing_coverage': existing_coverage,
         'planned_coverage': planned_coverage
     }
+
 
 def get_supported_engines():
     """Fetches the list of supported search engines."""
@@ -332,17 +333,17 @@ def get_planning_page_data():
     existing_coverage_rows = db.execute(existing_coverage_query, list(exception_tcids)).fetchall()
     metric_to_existing_tcs = defaultdict(list)
     for row in existing_coverage_rows:
-        metric_to_existing_tcs[(row['metric_name'], row['metric_type'].lower())].append(row)
+        metric_to_existing_tcs[(row['metric_name'], row['metric_type'])].append(row)
 
     planned_entries_query = "SELECT * FROM planning WHERE is_deleted = FALSE"
     planned_rows = db.execute(planned_entries_query).fetchall()
     metric_to_planned_tcs = defaultdict(list)
     for row in planned_rows:
-        metric_to_planned_tcs[(row['metric_name'], row['metric_type'].lower())].append(row)
+        metric_to_planned_tcs[(row['metric_name'], row['metric_type'])].append(row)
 
     planning_data = []
     for metric in all_metrics:
-        key = (metric['metric_name'], metric['metric_type'].lower())
+        key = (metric['metric_name'], metric['metric_type'])
         existing_links = metric_to_existing_tcs.get(key, [])
         tcid_count = len(set(link['tc_id'] for link in existing_links))
         region_count = len(set(link['region'] for link in existing_links if link['region']))
@@ -389,7 +390,7 @@ def get_report_data():
     all_metrics = db.execute(all_metrics_query).fetchall()
 
     covered_metrics_query = f"""
-        SELECT DISTINCT l.metric_name, l.metric_type, c.tc_id, c.tcid_title, l.region, l.engine
+        SELECT l.metric_name, l.metric_type, c.tc_id
         FROM coverage_to_metric_link l
         JOIN coverage c ON l.coverage_id = c.coverage_id
         WHERE l.is_deleted = FALSE AND c.is_deleted = FALSE
@@ -397,18 +398,17 @@ def get_report_data():
     """
     covered_metrics_rows = db.execute(covered_metrics_query, list(exception_tcids)).fetchall()
 
-    covered_metrics_set = set()
-    metric_to_tcids = defaultdict(list)
+    metric_to_tcids = defaultdict(set)
     for row in covered_metrics_rows:
         metric_key = (row['metric_name'], row['metric_type'])
-        covered_metrics_set.add(metric_key)
-        metric_to_tcids[metric_key].append((row['tc_id'], row['tcid_title'], row['region'], row['engine']))
+        metric_to_tcids[metric_key].add(row['tc_id'])
 
     report_data = []
     for metric in all_metrics:
         metric_key = (metric['name'], metric['type'])
-        is_covered = metric_key in covered_metrics_set
-        tcid_count = len(metric_to_tcids.get(metric_key, []))
+        tcid_count = len(metric_to_tcids.get(metric_key, set()))
+        is_covered = tcid_count > 0
+
         report_data.append({
             'name': metric['name'],
             'type': metric['type'],
@@ -423,7 +423,7 @@ def get_report_data():
         ORDER BY name
     """).fetchall()
 
-    return sorted(report_data, key=lambda x: x['name'].lower()), metric_types, metric_to_tcids
+    return sorted(report_data, key=lambda x: x['name'].lower()), metric_types, {}
 
 
 def get_general_stats():
@@ -447,7 +447,8 @@ def get_general_stats():
 
     stats = {
         'total_glean_metrics': db.execute("SELECT COUNT(*) FROM glean_metrics WHERE is_deleted = FALSE").fetchone()[0],
-        'total_legacy_metrics': db.execute("SELECT COUNT(*) FROM legacy_metrics WHERE is_deleted = FALSE").fetchone()[0],
+        'total_legacy_metrics': db.execute("SELECT COUNT(*) FROM legacy_metrics WHERE is_deleted = FALSE").fetchone()[
+            0],
         'glean_covered_tcs': get_covered_count('Glean'),
         'legacy_covered_tcs': get_covered_count('Legacy'),
     }
@@ -511,8 +512,8 @@ def update_planning_entry(data, user_id):
 
     conn = get_db()
     cursor = conn.cursor()
-    target_table = 'glean_metrics' if metric_type == 'glean' else 'legacy_metrics'
-    pk_column = 'glean_name' if metric_type == 'glean' else 'legacy_name'
+    target_table = 'glean_metrics' if metric_type == 'Glean' else 'legacy_metrics'
+    pk_column = 'glean_name' if metric_type == 'Glean' else 'legacy_name'
 
     if action == 'set_priority':
         priority = data.get('priority') if data.get('priority') != '-' else None
@@ -628,25 +629,48 @@ def add_coverage_entry(form_data, user_id):
     try:
         conn = get_db()
         cursor = conn.cursor()
+
+        table_name = f"{metric_type.lower()}_metrics"
+        pk_col = f"{metric_type.lower()}_name"
+        placeholders = ','.join('?' for _ in metric_names)
+        existing_metrics = cursor.execute(
+            f"SELECT {pk_col} FROM {table_name} WHERE {pk_col} IN ({placeholders})",
+            metric_names
+        ).fetchall()
+        existing_metrics_set = {row[pk_col] for row in existing_metrics}
+
+        valid_metric_names = [name for name in metric_names if name in existing_metrics_set]
+        invalid_metric_names = [name for name in metric_names if name not in existing_metrics_set]
+
+        if not valid_metric_names:
+            error_msg = "No valid metrics found. The following metrics do not exist: " + ", ".join(invalid_metric_names)
+            return False, error_msg
+
         cursor.execute("INSERT OR IGNORE INTO coverage (tc_id, tcid_title) VALUES (?, ?)", (tc_id, tcid_title))
         if cursor.rowcount > 0:
             log_edit(user_id, 'add_coverage_tcid', 'coverage', tc_id, "Created new TCID entry.")
         else:
-            cursor.execute("UPDATE coverage SET tcid_title = ? WHERE tc_id = ?", (tcid_title, tc_id))
+            if tcid_title:
+                cursor.execute("UPDATE coverage SET tcid_title = ? WHERE tc_id = ?", (tcid_title, tc_id))
 
         coverage_id = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?", (tc_id,)).fetchone()[
             'coverage_id']
 
-        all_combinations = product(metric_names, regions, engines)
+        all_combinations = product(valid_metric_names, regions, engines)
         for metric_name, region, engine in all_combinations:
             conn.execute("""
                 INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine)
                 VALUES (?, ?, ?, ?, ?)""",
-                         (coverage_id, metric_name, metric_type, region, engine))
+                         (coverage_id, metric_name, metric_type.capitalize(), region, engine))
 
-        log_edit(user_id, 'add_coverage', 'coverage', tc_id, f"Linked to metrics: {', '.join(metric_names)}")
+        log_edit(user_id, 'add_coverage', 'coverage', tc_id, f"Linked to metrics: {', '.join(valid_metric_names)}")
         conn.commit()
-        return True, f"Successfully added/updated coverage for TC ID '{tc_id}'."
+
+        success_message = f"Successfully added/updated coverage for TC ID '{tc_id}' for metrics: {', '.join(valid_metric_names)}."
+        if invalid_metric_names:
+            success_message += f" Skipped non-existent metrics: {', '.join(invalid_metric_names)}."
+
+        return True, success_message
     except sqlite3.Error as e:
         return False, f"A database error occurred: {e}"
 
@@ -676,9 +700,9 @@ def soft_delete_item(table_name, pk, user_id):
 # --- Service functions for CSV and extractions ---
 
 def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
-    """Bulk imports metrics from a CSV file stream by column order."""
+    """Bulk imports metrics from a CSV file stream, handling multiple metrics per row."""
     if metric_type not in ['glean', 'legacy']:
-        return 0, 0
+        return 0, 0, []
 
     conn = get_db()
     cursor = conn.cursor()
@@ -686,72 +710,124 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
     name_col = f"{metric_type}_name"
 
     inserted_count = 0
-    error_count = 0
+    duplicate_count = 0
+    errors = []
+
+    metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
 
     try:
         csv_file = csv.reader(io.TextIOWrapper(file_stream, 'utf-8-sig'))
-        next(csv_file, None)
+        next(csv_file, None)  # Skip header row
 
-        for row in csv_file:
+        for line_num, row in enumerate(csv_file, 2):
             try:
                 if not row or not row[0]:
-                    error_count += 1
+                    errors.append(f"Line {line_num}: Empty or malformed row.")
                     continue
 
-                name = row[0].strip()
+                metric_names_str = row[0]
+                potential_metric_strings = [name.strip() for name in metric_names_str.split(',') if name.strip()]
+
+                metric_names = []
+                for s in potential_metric_strings:
+                    match = metric_name_extract_regex.match(s)
+                    if match:
+                        metric_names.append(match.group(0))
+
+                if not metric_names:
+                    errors.append(f"Line {line_num}: No valid metric names found in '{metric_names_str}'.")
+                    continue
+
                 metric_cat = row[1].strip() if len(row) > 1 and row[1] else None
                 description = row[2].strip() if len(row) > 2 and row[2] else None
 
-                cursor.execute(
-                    f"INSERT INTO {table_name} ({name_col}, metric_type, description) VALUES (?, ?, ?)",
-                    (name, metric_cat, description)
-                )
-                if cursor.rowcount > 0:
-                    inserted_count += 1
-                    log_edit(user_id, f'bulk_add_{metric_type}', table_name, name, f"Type: {metric_cat} (from CSV)")
-            except sqlite3.IntegrityError:
-                error_count += 1
-            except (sqlite3.Error, IndexError):
-                error_count += 1
-    except Exception:
-        error_count += 1
+                for name in metric_names:
+                    try:
+                        cursor.execute(
+                            f"INSERT INTO {table_name} ({name_col}, metric_type, description) VALUES (?, ?, ?)",
+                            (name, metric_cat, description)
+                        )
+                        if cursor.rowcount > 0:
+                            inserted_count += 1
+                            log_edit(user_id, f'bulk_add_{metric_type}', table_name, name,
+                                     f"Type: {metric_cat} (from CSV)")
+                    except sqlite3.IntegrityError:
+                        duplicate_count += 1
+
+            except (sqlite3.Error, IndexError) as e:
+                errors.append(f"Line {line_num}: Database or parsing error - {e}.")
+    except Exception as e:
+        errors.append(f"File-level error: Could not process the CSV file. Details: {e}")
 
     conn.commit()
-    return inserted_count, error_count
+    return inserted_count, duplicate_count, errors
 
 
 def bulk_import_coverage_from_csv(file_stream, user_id):
-    """Bulk imports coverage links from a CSV file stream by column order, ignoring exceptions."""
+    """Bulk imports coverage links from a CSV, handling multiple metrics per row and ignoring exceptions."""
     conn = get_db()
     cursor = conn.cursor()
 
     exception_tcids = _get_exception_tcid_set()
 
     processed_count = 0
-    error_count = 0
+    duplicate_count = 0
+    errors = []
+
+    metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
 
     try:
         csv_file = csv.reader(io.TextIOWrapper(file_stream, 'utf-8-sig'))
         next(csv_file, None)
 
-        for row in csv_file:
+        for line_num, row in enumerate(csv_file, 2):
             try:
                 if not row or len(row) < 4:
-                    error_count += 1
+                    errors.append(f"Line {line_num}: Row is malformed or has too few columns.")
                     continue
 
-                tc_id_raw, title, metric_name, metric_type = row[0], row[1], row[2], row[3]
+                tc_id_raw, title, metric_names_str, metric_type_raw = row[0], row[1], row[2], row[3]
                 tc_id = _strip_tcid_prefix(tc_id_raw.strip())
+                metric_type = metric_type_raw.strip()
+
+                if not tc_id:
+                    errors.append(f"Line {line_num}: TC ID is missing.")
+                    continue
 
                 if tc_id in exception_tcids:
-                    error_count += 1
+                    errors.append(f"Line {line_num}: TCID '{tc_id}' is on the exception list.")
                     continue
 
                 region = row[4].strip() if len(row) > 4 and row[4] else None
                 engine = row[5].strip() if len(row) > 5 and row[5] else None
 
-                if not all([tc_id_raw, metric_name, metric_type]):
-                    error_count += 1
+                potential_metric_strings = [name.strip() for name in metric_names_str.split(',') if name.strip()]
+                metric_names = []
+                for s in potential_metric_strings:
+                    match = metric_name_extract_regex.match(s)
+                    if match:
+                        metric_names.append(match.group(0))
+
+                if not all([metric_names, metric_type]):
+                    errors.append(f"Line {line_num}: Metric Name or Metric Type is missing.")
+                    continue
+
+                table_name = f"{metric_type.lower()}_metrics"
+                pk_col = f"{metric_type.lower()}_name"
+                placeholders = ','.join('?' for _ in metric_names)
+                existing_metrics = cursor.execute(
+                    f"SELECT {pk_col} FROM {table_name} WHERE {pk_col} IN ({placeholders})",
+                    metric_names
+                ).fetchall()
+                existing_metrics_set = {r[pk_col] for r in existing_metrics}
+
+                valid_metric_names = [name for name in metric_names if name in existing_metrics_set]
+                invalid_metric_names = [name for name in metric_names if name not in existing_metrics_set]
+
+                if invalid_metric_names:
+                    errors.append(f"Line {line_num}: Non-existent metrics found - {', '.join(invalid_metric_names)}.")
+
+                if not valid_metric_names:
                     continue
 
                 cursor.execute("INSERT OR IGNORE INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
@@ -759,22 +835,25 @@ def bulk_import_coverage_from_csv(file_stream, user_id):
                 coverage_id = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?", (tc_id,)).fetchone()[
                     'coverage_id']
 
-                cursor.execute(
-                    "INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
-                    (coverage_id, metric_name.strip(), metric_type.strip(), region, engine)
-                )
-                if cursor.rowcount > 0:
-                    processed_count += 1
-                    log_edit(user_id, 'bulk_add_coverage', 'coverage_to_metric_link', tc_id,
-                             f"Linked to {metric_name} (from CSV)")
+                for metric_name in valid_metric_names:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
+                        (coverage_id, metric_name, metric_type.capitalize(), region, engine)
+                    )
+                    if cursor.rowcount > 0:
+                        processed_count += 1
+                        log_edit(user_id, 'bulk_add_coverage', 'coverage_to_metric_link', tc_id,
+                                 f"Linked to {metric_name} (from CSV)")
+                    else:
+                        duplicate_count += 1
 
-            except (sqlite3.Error, IndexError, TypeError, AttributeError):
-                error_count += 1
-    except Exception:
-        error_count += 1
+            except (sqlite3.Error, IndexError, TypeError, AttributeError) as e:
+                errors.append(f"Line {line_num}: Database or parsing error - {e}.")
+    except Exception as e:
+        errors.append(f"File-level error: Could not process the CSV file. Details: {e}")
 
     conn.commit()
-    return processed_count, error_count
+    return processed_count, duplicate_count, errors
 
 
 def extract_probes_from_csv(file_stream):
@@ -785,6 +864,8 @@ def extract_probes_from_csv(file_stream):
     probe_regex = re.compile(r'([a-zA-Z0-9\._-]+(\.glean|\.telemetry)[a-zA-Z0-9\._-]+)')
     region_regex = re.compile(r'\b(US|DE|JP|FR|GB|IT|ES|CA|IN)\b', re.IGNORECASE)
     engine_regex = re.compile(r'\b(' + '|'.join(engine_names) + r')\b', re.IGNORECASE) if engine_names else None
+
+    valid_metric_regex = re.compile(r"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$")
 
     output = io.StringIO()
     try:
@@ -798,12 +879,12 @@ def extract_probes_from_csv(file_stream):
 
         for row in reader:
             text_to_search = " ".join(row)
-
             found_probes = set(probe_regex.findall(text_to_search))
+            valid_found_probes = {p[0] for p in found_probes if valid_metric_regex.match(p[0])}
             found_regions = set(region_regex.findall(text_to_search))
             found_engines = set(engine_regex.findall(text_to_search)) if engine_regex else set()
 
-            found_probes_str = ", ".join(sorted([p[0] for p in found_probes])) or "N/A"
+            found_probes_str = ", ".join(sorted(valid_found_probes)) or "N/A"
             found_regions_str = ", ".join(sorted(found_regions)) or "N/A"
             found_engines_str = ", ".join(sorted(found_engines)) or "N/A"
 
@@ -829,6 +910,8 @@ def extract_from_rotation_csv(file_stream):
     engine_names = [re.escape(engine['name']) for engine in db_engines]
     region_regex = re.compile(r'\b(US|DE|JP|FR|GB|IT|ES|CA|IN)\b', re.IGNORECASE)
     engine_regex = re.compile(r'\b(' + '|'.join(engine_names) + r')\b', re.IGNORECASE) if engine_names else None
+
+    valid_metric_regex = re.compile(r"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$")
 
     output = io.StringIO()
     try:
@@ -859,7 +942,9 @@ def extract_from_rotation_csv(file_stream):
                         metric_type_candidate = rotation_parts[0].strip().capitalize()
                         if metric_type_candidate in ['Glean', 'Legacy']:
                             found_metric_type = metric_type_candidate
-                            found_metrics = ", ".join([name for name in rotation_parts[1:] if name]) or "N/A"
+                            potential_metrics = [name for name in rotation_parts[1:] if name]
+                            valid_metrics = [m for m in potential_metrics if valid_metric_regex.match(m)]
+                            found_metrics = ", ".join(valid_metrics) or "N/A"
 
                 output_row = row + [found_region, found_engine, found_metric_type, found_metrics]
                 writer.writerow(output_row)

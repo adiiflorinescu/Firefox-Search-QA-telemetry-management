@@ -53,7 +53,6 @@
 
 <div class="container">
     <nav>
-        {# DEFINITIVE FIX: Check if g.user exists before accessing its properties #}
         {% if g.user and g.user.role == 'admin' %}
             <a href="{{ url_for('management.index') }}">Data Management</a>
             <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
@@ -75,7 +74,6 @@
     <h1>Coverage Planning</h1>
 
     <div class="filters-container">
-        <!-- Filters remain the same -->
         <input type="search" id="search-field" placeholder="Search for metrics...">
         <input type="text" id="metric-type-filter" list="metric-types-list" placeholder="Filter by Metric Type...">
         <datalist id="metric-types-list">
@@ -112,7 +110,7 @@
         </thead>
         <tbody>
             {% for row in planning_data %}
-            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}" data-specific-metric-type="{{ row.specific_metric_type.lower() if row.specific_metric_type else '' }}">
+            <tr class="metric-row" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type }}" data-specific-metric-type="{{ row.specific_metric_type.lower() if row.specific_metric_type else '' }}">
                 <td class="col-metric-name">
                     <span class="metric-type-badge {{ row.metric_type.lower() }}-badge">{{ row.metric_type[0] }}</span>
                     {{ row.metric_name }}
@@ -122,8 +120,7 @@
                 <td class="col-count">{{ row.engine_count }}</td>
                 <td class="col-priority">
                     <div>
-                        <!-- ROLE-BASED CONTROL: Disable for readonly -->
-                        <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}" {% if not g.user or g.user.role == 'readonly' %}disabled{% endif %}>
+                        <select class="priority-dropdown" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type }}" {% if not g.user or g.user.role == 'readonly' %}disabled{% endif %}>
                             <option value="-" {% if not row.priority %}selected{% endif %}>-</option>
                             {% for i in range(1, 6) %}
                             <option value="P{{i}}" {% if row.priority == 'P' ~ i %}selected{% endif %}>P{{i}}</option>
@@ -134,7 +131,7 @@
                     </div>
                 </td>
             </tr>
-            <tr class="sub-table-row hidden" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type.lower() }}">
+            <tr class="sub-table-row hidden" data-metric-name="{{ row.metric_name }}" data-metric-type="{{ row.metric_type }}">
                 <td colspan="5">
                     <div class="details-container">
                         <table class="details-table">
@@ -142,8 +139,8 @@
                                 <tr><th>Engine</th><th>Region</th><th>TC ID</th><th>Actions</th></tr>
                             </thead>
                             <tbody>
-                                {% set existing = metric_to_existing_tcs.get((row.metric_name, row.metric_type.lower()), []) %}
-                                {% set planned = metric_to_planned_tcs.get((row.metric_name, row.metric_type.lower()), []) %}
+                                {% set existing = metric_to_existing_tcs.get((row.metric_name, row.metric_type), []) %}
+                                {% set planned = metric_to_planned_tcs.get((row.metric_name, row.metric_type), []) %}
 
                                 {% for tc in existing | sort_details %}
                                 <tr>
@@ -159,14 +156,12 @@
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>
                                     <td>
-                                        <!-- ROLE-BASED CONTROL: Hide for readonly -->
                                         {% if g.user and g.user.role != 'readonly' %}
                                             <input type="text" class="editable-tcid" value="" placeholder="Add TC ID to promote...">
                                             <button class="save-tcid-btn">Save</button>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <!-- ROLE-BASED CONTROL: Hide for readonly -->
                                         {% if g.user and g.user.role != 'readonly' %}
                                             <span class="remove-btn">✖</span>
                                         {% endif %}
@@ -174,7 +169,6 @@
                                 </tr>
                                 {% endfor %}
 
-                                <!-- ROLE-BASED CONTROL: Hide for readonly -->
                                 {% if g.user and g.user.role != 'readonly' %}
                                 <tr class="add-plan-form">
                                     <td><input type="text" class="new-plan-engine" placeholder="Engine..."></td>
@@ -188,7 +182,6 @@
 
                         <div class="notes-section {% if not row.notes %}hidden{% endif %}">
                             <h4>Notes</h4>
-                            <!-- ROLE-BASED CONTROL: Make readonly -->
                             <textarea class="notes-textarea" placeholder="Add planning notes here..." {% if not g.user or g.user.role == 'readonly' %}readonly{% endif %}>{{ row.notes or '' }}</textarea>
                         </div>
                     </div>
@@ -200,19 +193,13 @@
 </div>
 
 <script>
-// Your existing JavaScript logic remains the same.
-// The server-side rendering handles the permissions, so the JS
-// will only interact with the elements available to the user.
 document.addEventListener('DOMContentLoaded', function() {
     const table = document.getElementById('planning-table');
     const tcBaseUrl = "{{ tc_base_url }}";
 
-    // Event delegation for all clicks on the table
     table.addEventListener('click', function(e) {
         const metricRow = e.target.closest('.metric-row');
-        const subTableRow = e.target.closest('.sub-table-row');
 
-        // Toggle sub-table visibility, excluding certain elements
         if (metricRow && !e.target.classList.contains('notes-icon') && e.target.tagName !== 'SELECT' && e.target.tagName !== 'OPTION') {
             const subRow = metricRow.nextElementSibling;
             if (subRow && subRow.classList.contains('sub-table-row')) {
@@ -220,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Handle notes icon click
         if (e.target.classList.contains('notes-icon')) {
             const parentRow = e.target.closest('.metric-row');
             const subRow = parentRow.nextElementSibling;
@@ -234,7 +220,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Handle "Add Plan" button click
         if (e.target.classList.contains('add-plan-btn')) {
             const formRow = e.target.closest('.add-plan-form');
             const subRow = formRow.closest('.sub-table-row');
@@ -251,7 +236,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 engine: engine
             }).then(data => {
                 if (data.success) {
-                    // Dynamically add the new row to the UI
                     const newRow = document.createElement('tr');
                     newRow.classList.add('planned-entry');
                     newRow.dataset.planningId = data.new_id;
@@ -265,14 +249,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td><span class="remove-btn">✖</span></td>
                     `;
                     formRow.before(newRow);
-                    // Clear input fields
                     formRow.querySelector('.new-plan-region').value = '';
                     formRow.querySelector('.new-plan-engine').value = '';
                 }
             });
         }
 
-        // Handle "Remove Plan" button click
         if (e.target.classList.contains('remove-btn')) {
             const plannedRow = e.target.closest('.planned-entry');
             const planningId = plannedRow.dataset.planningId;
@@ -285,25 +267,35 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Handle "Save TCID" (Promote) button click
         if (e.target.classList.contains('save-tcid-btn')) {
             const plannedRow = e.target.closest('.planned-entry');
+            const subRow = plannedRow.closest('.sub-table-row'); // Get parent sub-row
             const planningId = plannedRow.dataset.planningId;
             const newTcid = plannedRow.querySelector('.editable-tcid').value.trim();
+
+            // DEFINITIVE FIX: Get metric_name and metric_type from the parent sub-row's dataset
+            const metricName = subRow.dataset.metricName;
+            const metricType = subRow.dataset.metricType;
+
             if (!newTcid) {
                 alert('Please enter a TC ID to promote this entry.');
                 return;
             }
 
-            const region = plannedRow.cells[1].textContent;
-            const engine = plannedRow.cells[0].textContent;
-
-            updatePlanning({ action: 'promote_to_coverage', planning_id: planningId, new_tc_id: newTcid }).then(data => {
+            updatePlanning({
+                action: 'promote_to_coverage',
+                planning_id: planningId,
+                new_tc_id: newTcid,
+                metric_name: metricName, // Pass the correct metric name
+                metric_type: metricType  // Pass the correct, Title-Cased metric type
+            }).then(data => {
                 if (data.success) {
-                    const subTableRow = plannedRow.closest('.sub-table-row');
-                    const mainRow = subTableRow.previousElementSibling;
+                    const mainRow = subRow.previousElementSibling;
                     const countCell = mainRow.querySelector('.tcid-count-cell');
                     countCell.textContent = parseInt(countCell.textContent) + 1;
+
+                    const region = plannedRow.cells[1].textContent;
+                    const engine = plannedRow.cells[0].textContent;
 
                     const newExistingRow = document.createElement('tr');
                     const tcidPrefixStripped = newTcid.match(/\d.*/) ? newTcid.match(/\d.*/)[0] : newTcid;

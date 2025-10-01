@@ -70,10 +70,24 @@ def handle_file_upload(metric_type):
         flash('No file selected.', 'error')
         return redirect(url_for('management.index'))
     if file and file.filename.endswith('.csv'):
-        count, errors = db.bulk_import_metrics_from_csv(metric_type, file, g.user['user_id'])
-        flash(
-            f"Bulk Import Complete: Added {count} new {metric_type.capitalize()} metrics. Encountered {errors} errors/duplicates.",
-            'success')
+        count, duplicates, errors = db.bulk_import_metrics_from_csv(metric_type, file, g.user['user_id'])
+
+        message = f"Bulk Import Complete: Added {count} new {metric_type.capitalize()} metrics."
+        if duplicates > 0:
+            message += f" Skipped {duplicates} duplicates."
+
+        # DEFINITIVE FIX: Display detailed error messages
+        if errors:
+            error_count = len(errors)
+            message += f" Encountered {error_count} error(s)."
+            flash(message, 'warning' if count > 0 else 'error')
+            # Flash the first few errors for immediate feedback
+            error_details = " Errors found: " + " | ".join(errors[:5])
+            if error_count > 5:
+                error_details += " (and more...)"
+            flash(error_details, 'error')
+        else:
+            flash(message, 'success')
     else:
         flash('Invalid file type. Please upload a CSV file.', 'error')
     return redirect(url_for('management.index'))
@@ -99,8 +113,24 @@ def bulk_import_coverage():
         flash('No file selected.', 'error')
         return redirect(url_for('management.index'))
     if file and file.filename.endswith('.csv'):
-        count, errors = db.bulk_import_coverage_from_csv(file, g.user['user_id'])
-        flash(f"Bulk Import Complete: Processed {count} coverage links. Encountered {errors} errors (including exceptions).", 'success')
+        count, duplicates, errors = db.bulk_import_coverage_from_csv(file, g.user['user_id'])
+
+        message = f"Bulk Import Complete: Created {count} new coverage links."
+        if duplicates > 0:
+            message += f" Skipped {duplicates} duplicate links."
+
+        # DEFINITIVE FIX: Display detailed error messages
+        if errors:
+            error_count = len(errors)
+            message += f" Encountered {error_count} error(s)."
+            flash(message, 'warning' if count > 0 else 'error')
+            # Flash the first few errors for immediate feedback
+            error_details = " Errors found: " + " | ".join(errors[:5])
+            if error_count > 5:
+                error_details += " (and more...)"
+            flash(error_details, 'error')
+        else:
+            flash(message, 'success')
     else:
         flash('Invalid file type. Please upload a CSV file.', 'error')
     return redirect(url_for('management.index'))
@@ -143,8 +173,8 @@ def extract_from_rotation():
         output_csv_string = db.extract_from_rotation_csv(file)
 
         if not output_csv_string:
-             flash('Processing failed. The file might be empty or in the wrong format.', 'error')
-             return redirect(url_for('management.index'))
+            flash('Processing failed. The file might be empty or in the wrong format.', 'error')
+            return redirect(url_for('management.index'))
 
         return Response(
             output_csv_string,
