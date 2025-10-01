@@ -1,5 +1,11 @@
 /* C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/static/css/style.css */
 
+/* DEFINITIVE FIX: Set the root font size to scale the entire UI down. */
+/* This makes the 100% view look like it's at 70% zoom. */
+html {
+    font-size: 11.2px; /* 70% of the browser default 16px */
+}
+
 /* --- General Body and Layout --- */
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -165,7 +171,7 @@ button:hover, .button-link:hover {
     background-color: #c53030;
 }
 
-/* --- DEFINITIVE FIX: Collapsible Sections --- */
+/* --- Collapsible Sections --- */
 details {
     border: 1px solid #ddd;
     border-radius: 5px;
