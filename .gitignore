@@ -9,6 +9,8 @@ venv/
 # Python bytecode and cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
 # Instance folder - contains the database and other non-versioned files
 /instance/
@@ -22,3 +24,4 @@ Thumbs.db
 
 # Python packaging artifacts
 *.egg-info/
+

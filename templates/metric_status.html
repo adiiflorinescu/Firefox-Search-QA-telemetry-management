@@ -3,121 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Status for {{ metric_data.details[metric_data.type.lower() + '_name'] }}</title>
+    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
+    <title>Status for {{ metric_data.details[metric_data.type.lower() ~ '_name'] }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        h1, h2 { color: #1a2b4d; }
-        h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; word-break: break-all; }
-        nav { margin-bottom: 2rem; display: flex; align-items: center; }
-        nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
-        .nav-right { margin-left: auto; }
-        .metric-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; padding: 1.5rem; background-color: #f9fafb; border-radius: 8px; border: 1px solid #eef; }
-        .detail-item { display: flex; flex-direction: column; }
-        .detail-item strong { font-size: 0.9rem; color: #555; margin-bottom: 0.25rem; text-transform: uppercase; }
-        .detail-item span, .detail-item pre { font-size: 1rem; }
-        .detail-item pre { background-color: #f3f4f6; padding: 0.5rem; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; }
-        .full-width { grid-column: 1 / -1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { padding: 12px; text-align: left; border: 1px solid #eef; }
-        th { background-color: #f2f4f8; }
-        .planned-entry td { font-style: italic; color: #92400e; background-color: #fffbea; }
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 2rem;
+            background-color: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #eef;
+            margin-bottom: 2rem;
+        }
+        .details-grid dt {
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .details-grid dd {
+            margin-left: 0;
+            word-break: break-all;
+        }
+        .section-title {
+            margin-top: 2rem;
+            color: #1a2b4d;
+            border-bottom: 2px solid #eef;
+            padding-bottom: 10px;
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <nav>
-        {# DEFINITIVE FIX: Show full navigation only if a user is logged in. #}
-        {% if g.user %}
-            {# --- Logged-in User Navigation --- #}
-            {% if g.user.role == 'admin' %}
-                <a href="{{ url_for('management.index') }}">Data Management</a>
-                <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
-            {% endif %}
-            <a href="{{ url_for('main.metrics') }}">View Metrics</a>
-            <a href="{{ url_for('main.reports') }}">Metric Reports</a>
-            <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
-            {% if g.user.role == 'admin' %}
-                <a href="{{ url_for('user_management.index') }}">User Management</a>
-            {% endif %}
-            <div class="nav-right">
-                <a href="{{ url_for('auth.logout') }}">Logout ({{ g.user.username }})</a>
-            </div>
-        {% else %}
-            {# --- Public (Not Logged-in) Navigation --- #}
-            <div class="nav-right">
-                <a href="{{ url_for('auth.login') }}">Login</a>
-            </div>
-        {% endif %}
+        <a href="{{ url_for('main.metrics') }}">Back to Metrics</a>
+        <a href="{{ url_for('main.reports') }}">Metric Reports</a>
+        <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
     </nav>
 
-    <h1>Status: {{ metric_data.details[metric_data.type.lower() + '_name'] }}</h1>
+    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
+    <h1>Metric Status: {{ metric_data.details[metric_data.type.lower() ~ '_name'] }}</h1>
 
-    <div class="metric-details-grid">
-        <div class="detail-item">
-            <strong>Metric Type</strong>
-            <span>{{ metric_data.type }}</span>
-        </div>
-        <div class="detail-item">
-            <strong>Specific Type</strong>
-            <span>{{ metric_data.details.metric_type or 'N/A' }}</span>
-        </div>
-        <div class="detail-item">
-            <strong>Priority</strong>
-            <span>{{ metric_data.details.priority or 'Not Set' }}</span>
-        </div>
-        <div class="detail-item">
-            <strong>Description</strong>
-            <span>{{ metric_data.details.description or 'N/A' }}</span>
-        </div>
-        <div class="detail-item full-width">
-            <strong>Notes / Comments</strong>
-            {% if metric_data.details.notes %}
-                <pre>{{ metric_data.details.notes }}</pre>
-            {% else %}
-                <span>No notes available.</span>
-            {% endif %}
-        </div>
+    <div class="details-grid">
+        <dl>
+            <dt>Metric Type</dt>
+            <dd>{{ metric_data.type }}</dd>
+            <dt>Specific Type</dt>
+            <dd>{{ metric_data.details.metric_type or 'N/A' }}</dd>
+            <dt>Priority</dt>
+            <dd>{{ metric_data.details.priority or 'Not Set' }}</dd>
+        </dl>
+        <dl>
+            <dt>Description</dt>
+            <dd>{{ metric_data.details.description or 'No description provided.' }}</dd>
+            <dt>Notes</dt>
+            <dd>{{ metric_data.details.notes or 'No notes provided.' }}</dd>
+        </dl>
     </div>
 
-    <h2>Coverage Details</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Status</th>
-                <th>TC ID</th>
-                <th>TCID Title</th>
-                <th>Region</th>
-                <th>Engine</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in metric_data.existing_coverage %}
-            <tr>
-                <td>Existing</td>
-                <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank">{{ item.tc_id }}</a></td>
-                <td>{{ item.tcid_title or 'N/A' }}</td>
-                <td>{{ item.region or 'N/A' }}</td>
-                <td>{{ item.engine or 'N/A' }}</td>
-            </tr>
-            {% endfor %}
-            {% for item in metric_data.planned_coverage %}
-            <tr class="planned-entry">
-                <td>Planned</td>
-                <td>N/A</td>
-                <td>N/A</td>
-                <td>{{ item.region or 'N/A' }}</td>
-                <td>{{ item.engine or 'N/A' }}</td>
-            </tr>
-            {% endfor %}
-            {% if not metric_data.existing_coverage and not metric_data.planned_coverage %}
-            <tr>
-                <td colspan="5" style="text-align: center;">No existing or planned coverage found for this metric.</td>
-            </tr>
-            {% endif %}
-        </tbody>
-    </table>
+    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
+    <h2 class="section-title">Existing Coverage ({{ metric_data.existing_coverage|length }})</h2>
+    {% if metric_data.existing_coverage %}
+        <table>
+            <thead>
+                <tr>
+                    <th>TC ID</th>
+                    <th>Title</th>
+                    <th>Region</th>
+                    <th>Engine</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in metric_data.existing_coverage %}
+                <tr>
+                    <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank">{{ item.tc_id }}</a></td>
+                    <td>{{ item.tcid_title or 'N/A' }}</td>
+                    <td>{{ item.region or 'N/A' }}</td>
+                    <td>{{ item.engine or 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No existing test case coverage found for this metric.</p>
+    {% endif %}
+
+    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
+    <h2 class="section-title">Planned Coverage ({{ metric_data.planned_coverage|length }})</h2>
+    {% if metric_data.planned_coverage %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Region</th>
+                    <th>Engine</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in metric_data.planned_coverage %}
+                <tr>
+                    <td>{{ item.region or 'Any' }}</td>
+                    <td>{{ item.engine or 'Any' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No planned coverage found for this metric.</p>
+    {% endif %}
+
 </div>
 </body>
 </html>

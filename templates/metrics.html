@@ -31,7 +31,6 @@
         }
         .col-compact { width: 80px; font-size: 0.85em; color: #666; }
         .col-center { text-align: center; }
-        .col-compact.col-search { width: 50px; }
         .col-main-id { white-space: nowrap; }
 
         .search-container {
@@ -71,11 +70,11 @@
             cursor: pointer;
             padding: 0;
             color: #c53030;
-            opacity: 0.6; /* Make it slightly transparent by default */
+            opacity: 0.6;
             transition: opacity 0.2s ease-in-out;
         }
         .delete-btn:hover {
-            opacity: 1; /* Full opacity on hover */
+            opacity: 1;
         }
         .col-actions {
             width: 0.7em;
@@ -100,14 +99,14 @@
             font-size: 1rem;
             font-weight: normal;
             background-color: transparent;
-            padding: 12px; /* Add padding back to the summary for clickable area */
+            padding: 12px;
             position: relative;
         }
         #coverage-table summary::-webkit-details-marker {
             display: none;
         }
         #coverage-table summary {
-            list-style: none; /* For Firefox */
+            list-style: none;
         }
 
         #coverage-table #coverage-body > tr > td {
@@ -178,7 +177,6 @@
             </thead>
             <tbody id="coverage-body">
                 {% for item in coverage %}
-                {# DEFINITIVE FIX: Use item.metric_type directly (Title Case) #}
                 <tr class="metric-row" data-metric-name="{{ item.metric_name }}" data-metric-type="{{ item.metric_type }}">
                     <td>
                         <details>
@@ -222,19 +220,16 @@
                     <th class="col-main-id">Glean Name</th>
                     <th class="col-compact">Type</th>
                     <th class="col-compact">Expire</th>
-                    <th class="col-compact col-search col-center">Srch</th>
                     <th class="description-cell">Description</th>
                     {% if g.user and g.user.role == 'admin' %}<th class="col-actions"></th>{% endif %}
                 </tr>
             </thead>
             <tbody id="glean-body">
                 {% for metric in glean_metrics %}
-                {# DEFINITIVE FIX: Use metric.metric_type directly (Title Case) #}
                 <tr data-name="{{ metric.glean_name }}" data-metric-type="{{ metric.metric_type or '' }}">
                     <td class="col-main-id" title="{{ metric.glean_name }}">{{ metric.glean_name }}</td>
                     <td class="col-compact">{{ metric.metric_type }}</td>
                     <td class="col-compact">{{ metric.expiration }}</td>
-                    <td class="col-compact col-search col-center">{{ '✔️' if metric.search_metric else '❌' }}</td>
                     <td class="description-cell">
                         <div class="description-content">{{ metric.description }}</div>
                     </td>
@@ -257,19 +252,16 @@
                     <th class="col-main-id">Legacy Name</th>
                     <th class="col-compact">Type</th>
                     <th class="col-compact">Expire</th>
-                    <th class="col-compact col-search col-center">Srch</th>
                     <th class="description-cell">Description</th>
                     {% if g.user and g.user.role == 'admin' %}<th class="col-actions"></th>{% endif %}
                 </tr>
             </thead>
             <tbody id="legacy-body">
                 {% for metric in legacy_metrics %}
-                {# DEFINITIVE FIX: Use metric.metric_type directly (Title Case) #}
                 <tr data-name="{{ metric.legacy_name }}" data-metric-type="{{ metric.metric_type or '' }}">
                     <td class="col-main-id" title="{{ metric.legacy_name }}">{{ metric.legacy_name }}</td>
                     <td class="col-compact">{{ metric.metric_type }}</td>
                     <td class="col-compact">{{ metric.expiration }}</td>
-                    <td class="col-compact col-search col-center">{{ '✔️' if metric.search_metric else '❌' }}</td>
                     <td class="description-cell">
                         <div class="description-content">{{ metric.description }}</div>
                     </td>
@@ -314,11 +306,9 @@
             const searchTerm = searchField.value.trim().toLowerCase();
             const selectedType = typeFilter.value.trim().toLowerCase();
 
-            // Helper function to filter main metric tables
             const filterTableRows = (rows) => {
                 rows.forEach(row => {
                     const name = row.dataset.name.toLowerCase();
-                    // DEFINITIVE FIX: Read the Title Case value and convert to lower for comparison
                     const metricType = (row.dataset.metricType || '').toLowerCase();
                     const matchesSearch = name.includes(searchTerm) || searchTerm === '';
                     const matchesType = (selectedType === '') || (metricType.includes(selectedType));
@@ -331,7 +321,6 @@
 
             coverageRows.forEach(row => {
                 const metricName = row.dataset.metricName.toLowerCase();
-                // DEFINITIVE FIX: Read the Title Case value and convert to lower for comparison
                 const metricType = (row.dataset.metricType || '').toLowerCase();
                 const detailsElement = row.querySelector('details');
                 const detailRows = row.querySelectorAll('.detail-row');

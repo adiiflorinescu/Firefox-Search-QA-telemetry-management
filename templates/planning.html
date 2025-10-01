@@ -6,7 +6,6 @@
     <title>Coverage Planning - Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* Styles from your provided file */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         h1, h2 { color: #1a2b4d; }
@@ -38,13 +37,37 @@
         .details-container { padding: 1rem; background-color: #fdfdff; }
         .details-table { font-size: 0.9em; }
         .details-table th, .details-table td { padding: 8px; }
-        .planned-entry { background-color: #fffbea !important; font-style: italic; color: #92400e; }
-        .remove-btn { cursor: pointer; color: #c53030; font-weight: bold; }
+
+        /* DEFINITIVE FIX: Improved styles for planned entries */
+        .planned-entry { background-color: #f0f5fa !important; }
+        .planned-entry td { border-top: 1px dashed #a6b7d0; }
+        .planned-entry .editable-tcid {
+            width: 150px;
+            padding: 6px;
+            font-size: 0.9em;
+            border: 1px solid #a6b7d0;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+        .planned-entry .save-tcid-btn {
+            padding: 6px 10px;
+            font-size: 0.9em;
+            margin-left: 8px;
+            cursor: pointer;
+            background-color: #38a169; /* Green for save */
+        }
+        .planned-entry .save-tcid-btn:hover { background-color: #2f855a; }
+        .planned-entry .remove-btn {
+            cursor: pointer;
+            color: #c53030;
+            font-weight: bold;
+            font-size: 1.2em;
+            padding: 0 5px;
+        }
+
         .notes-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #ccc; }
         .notes-section h4 { margin: 0 0 0.5rem 0; font-size: 1em; color: #333; }
         .notes-section textarea { width: 100%; min-height: 80px; padding: 8px; font-size: 1em; border: 1px solid #d1d5db; border-radius: 4px; box-sizing: border-box; resize: vertical; }
-        .editable-tcid { width: 120px; padding: 4px; font-size: 1em; border: 1px solid #d1d5db; border-radius: 4px; background-color: #fefce8; }
-        .save-tcid-btn { padding: 4px 8px; font-size: 0.9em; margin-left: 8px; cursor: pointer; }
         .add-plan-form input { padding: 6px; font-size: 0.9em; border: 1px solid #ccc; border-radius: 4px; }
         .add-plan-form button { padding: 6px 10px; font-size: 0.9em; cursor: pointer; }
     </style>
@@ -269,11 +292,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (e.target.classList.contains('save-tcid-btn')) {
             const plannedRow = e.target.closest('.planned-entry');
-            const subRow = plannedRow.closest('.sub-table-row'); // Get parent sub-row
+            const subRow = plannedRow.closest('.sub-table-row');
             const planningId = plannedRow.dataset.planningId;
             const newTcid = plannedRow.querySelector('.editable-tcid').value.trim();
 
-            // DEFINITIVE FIX: Get metric_name and metric_type from the parent sub-row's dataset
             const metricName = subRow.dataset.metricName;
             const metricType = subRow.dataset.metricType;
 
@@ -286,8 +308,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 action: 'promote_to_coverage',
                 planning_id: planningId,
                 new_tc_id: newTcid,
-                metric_name: metricName, // Pass the correct metric name
-                metric_type: metricType  // Pass the correct, Title-Cased metric type
+                metric_name: metricName,
+                metric_type: metricType
             }).then(data => {
                 if (data.success) {
                     const mainRow = subRow.previousElementSibling;

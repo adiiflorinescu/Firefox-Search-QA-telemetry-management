@@ -700,32 +700,54 @@ def soft_delete_item(table_name, pk, user_id):
 # --- Service functions for CSV and extractions ---
 
 def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
-    """Bulk imports metrics from a CSV file stream, handling multiple metrics per row."""
+    """
+    Bulk imports metrics from a CSV, returning a new CSV string with an 'Import Status' column.
+    """
     if metric_type not in ['glean', 'legacy']:
-        return 0, 0, []
+        # This case should ideally not be hit due to route checks, but good to handle.
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Error", "Details", "Import Status"])
+        writer.writerow(["Invalid metric type", "The system received an unsupported metric type for import.", "Error"])
+        return output.getvalue(), 0, 0, 1
 
     conn = get_db()
     cursor = conn.cursor()
     table_name = f"{metric_type}_metrics"
     name_col = f"{metric_type}_name"
 
+    output = io.StringIO()
+    writer = csv.writer(output) # Initialize writer early
+
     inserted_count = 0
     duplicate_count = 0
-    errors = []
+    error_count = 0
 
-    metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
+    header = [] # Initialize header to handle file-level errors before header is read
 
     try:
-        csv_file = csv.reader(io.TextIOWrapper(file_stream, 'utf-8-sig'))
-        next(csv_file, None)  # Skip header row
+        # Read content once
+        content = file_stream.read().decode('utf-8-sig')
+        content_stream = io.StringIO(content)
+        reader = csv.reader(content_stream)
 
-        for line_num, row in enumerate(csv_file, 2):
+        # Read header
+        header = next(reader, [])
+        writer.writerow(header + ["Import Status"]) # Write header to output CSV
+
+        metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
+
+        for row in reader: # Iterate over the rest of the rows
+            status = ""
+            original_row = list(row) # Keep a copy of the original row for output
             try:
-                if not row or not row[0]:
-                    errors.append(f"Line {line_num}: Empty or malformed row.")
+                if not original_row or not original_row[0]:
+                    status = "Error: Empty or malformed row."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
-                metric_names_str = row[0]
+                metric_names_str = original_row[0]
                 potential_metric_strings = [name.strip() for name in metric_names_str.split(',') if name.strip()]
 
                 metric_names = []
@@ -735,12 +757,16 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
                         metric_names.append(match.group(0))
 
                 if not metric_names:
-                    errors.append(f"Line {line_num}: No valid metric names found in '{metric_names_str}'.")
+                    status = f"Error: No valid metric names found in '{metric_names_str}'."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
-                metric_cat = row[1].strip() if len(row) > 1 and row[1] else None
-                description = row[2].strip() if len(row) > 2 and row[2] else None
+                metric_cat = original_row[1].strip() if len(original_row) > 1 and original_row[1] else None
+                description = original_row[2].strip() if len(original_row) > 2 and original_row[2] else None
 
+                row_successes = 0
+                row_duplicates = 0
                 for name in metric_names:
                     try:
                         cursor.execute(
@@ -749,85 +775,133 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
                         )
                         if cursor.rowcount > 0:
                             inserted_count += 1
+                            row_successes += 1
                             log_edit(user_id, f'bulk_add_{metric_type}', table_name, name,
                                      f"Type: {metric_cat} (from CSV)")
+                        # No else for row_duplicates here, as IntegrityError handles it.
                     except sqlite3.IntegrityError:
                         duplicate_count += 1
+                        row_duplicates += 1
+                    except Exception as inner_e:
+                        status = f"Error processing metric '{name}': {inner_e}"
+                        error_count += 1
+                        break # Break from inner loop if a metric fails
 
-            except (sqlite3.Error, IndexError) as e:
-                errors.append(f"Line {line_num}: Database or parsing error - {e}.")
-    except Exception as e:
-        errors.append(f"File-level error: Could not process the CSV file. Details: {e}")
+                if status.startswith("Error"): # If an inner error already set status
+                    pass
+                elif row_successes > 0 and row_duplicates > 0:
+                    status = f"Partial Success: {row_successes} added, {row_duplicates} duplicates."
+                elif row_successes > 0:
+                    status = "Success"
+                elif row_duplicates > 0:
+                    status = "Duplicate"
+                else:
+                    status = "Error: No metrics processed for this row."
+                    error_count += 1
+
+                writer.writerow(original_row + [status])
+
+            except Exception as e: # Catch any other unexpected row-level errors
+                error_count += 1
+                writer.writerow(original_row + [f"Error: {e}"])
+
+    except Exception as e: # Catch file-level errors (e.g., CSV parsing failure, decoding)
+        error_count += 1 # Increment for the file-level error
+        # If header wasn't read, write a minimal header + error
+        if not header:
+            writer.writerow(["Error", "Details", "Import Status"])
+        writer.writerow(["File-level error", str(e), "Error"])
+        # Clear other counts as the file couldn't be processed meaningfully
+        inserted_count = 0
+        duplicate_count = 0
 
     conn.commit()
-    return inserted_count, duplicate_count, errors
+    return output.getvalue(), inserted_count, duplicate_count, error_count
 
 
 def bulk_import_coverage_from_csv(file_stream, user_id):
-    """Bulk imports coverage links from a CSV, handling multiple metrics per row and ignoring exceptions."""
+    """
+    Bulk imports coverage from a CSV, returning a new CSV string with an 'Import Status' column.
+    """
     conn = get_db()
     cursor = conn.cursor()
-
     exception_tcids = _get_exception_tcid_set()
+
+    output = io.StringIO()
+    writer = csv.writer(output) # Initialize writer early
 
     processed_count = 0
     duplicate_count = 0
-    errors = []
+    error_count = 0
 
-    metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
+    header = [] # Initialize header to handle file-level errors before header is read
 
     try:
-        csv_file = csv.reader(io.TextIOWrapper(file_stream, 'utf-8-sig'))
-        next(csv_file, None)
+        # Read content once
+        content = file_stream.read().decode('utf-8-sig')
+        content_stream = io.StringIO(content)
+        reader = csv.reader(content_stream)
 
-        for line_num, row in enumerate(csv_file, 2):
+        # Read header
+        header = next(reader, [])
+        writer.writerow(header + ["Import Status"]) # Write header to output CSV
+
+        metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
+
+        for row in reader:
+            status = ""
+            original_row = list(row) # Keep a copy of the original row for output
             try:
-                if not row or len(row) < 4:
-                    errors.append(f"Line {line_num}: Row is malformed or has too few columns.")
+                if not original_row or len(original_row) < 4:
+                    status = "Error: Row is malformed or has too few columns."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
-                tc_id_raw, title, metric_names_str, metric_type_raw = row[0], row[1], row[2], row[3]
+                tc_id_raw, title, metric_names_str, metric_type_raw = original_row[0], original_row[1], original_row[2], original_row[3]
                 tc_id = _strip_tcid_prefix(tc_id_raw.strip())
                 metric_type = metric_type_raw.strip()
 
                 if not tc_id:
-                    errors.append(f"Line {line_num}: TC ID is missing.")
+                    status = "Error: TC ID is missing."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
                 if tc_id in exception_tcids:
-                    errors.append(f"Line {line_num}: TCID '{tc_id}' is on the exception list.")
+                    status = f"Error: TCID '{tc_id}' is on the exception list."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
-                region = row[4].strip() if len(row) > 4 and row[4] else None
-                engine = row[5].strip() if len(row) > 5 and row[5] else None
+                region = original_row[4].strip() if len(original_row) > 4 and original_row[4] else None
+                engine = original_row[5].strip() if len(original_row) > 5 and original_row[5] else None
 
                 potential_metric_strings = [name.strip() for name in metric_names_str.split(',') if name.strip()]
-                metric_names = []
-                for s in potential_metric_strings:
-                    match = metric_name_extract_regex.match(s)
-                    if match:
-                        metric_names.append(match.group(0))
+                metric_names = [match.group(0) for s in potential_metric_strings if
+                                (match := metric_name_extract_regex.match(s))]
 
                 if not all([metric_names, metric_type]):
-                    errors.append(f"Line {line_num}: Metric Name or Metric Type is missing.")
+                    status = "Error: Metric Name or Metric Type is missing."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
                 table_name = f"{metric_type.lower()}_metrics"
                 pk_col = f"{metric_type.lower()}_name"
                 placeholders = ','.join('?' for _ in metric_names)
                 existing_metrics = cursor.execute(
-                    f"SELECT {pk_col} FROM {table_name} WHERE {pk_col} IN ({placeholders})",
-                    metric_names
+                    f"SELECT {pk_col} FROM {table_name} WHERE {pk_col} IN ({placeholders})", metric_names
                 ).fetchall()
                 existing_metrics_set = {r[pk_col] for r in existing_metrics}
 
                 valid_metric_names = [name for name in metric_names if name in existing_metrics_set]
                 invalid_metric_names = [name for name in metric_names if name not in existing_metrics_set]
 
-                if invalid_metric_names:
-                    errors.append(f"Line {line_num}: Non-existent metrics found - {', '.join(invalid_metric_names)}.")
-
                 if not valid_metric_names:
+                    status = f"Error: No valid metrics found. Invalid: {', '.join(invalid_metric_names)}."
+                    error_count += 1
+                    writer.writerow(original_row + [status])
                     continue
 
                 cursor.execute("INSERT OR IGNORE INTO coverage (tc_id, tcid_title) VALUES (?, ?)",
@@ -835,25 +909,58 @@ def bulk_import_coverage_from_csv(file_stream, user_id):
                 coverage_id = cursor.execute("SELECT coverage_id FROM coverage WHERE tc_id = ?", (tc_id,)).fetchone()[
                     'coverage_id']
 
+                row_successes = 0
+                row_duplicates = 0
                 for metric_name in valid_metric_names:
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
-                        (coverage_id, metric_name, metric_type.capitalize(), region, engine)
-                    )
-                    if cursor.rowcount > 0:
-                        processed_count += 1
-                        log_edit(user_id, 'bulk_add_coverage', 'coverage_to_metric_link', tc_id,
-                                 f"Linked to {metric_name} (from CSV)")
-                    else:
+                    try:
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO coverage_to_metric_link (coverage_id, metric_name, metric_type, region, engine) VALUES (?, ?, ?, ?, ?)",
+                            (coverage_id, metric_name, metric_type.capitalize(), region, engine)
+                        )
+                        if cursor.rowcount > 0:
+                            processed_count += 1
+                            row_successes += 1
+                            log_edit(user_id, 'bulk_add_coverage', 'coverage_to_metric_link', tc_id,
+                                     f"Linked to {metric_name} (from CSV)")
+                        # No else for row_duplicates here, as IntegrityError handles it.
+                    except sqlite3.IntegrityError:
                         duplicate_count += 1
+                        row_duplicates += 1
+                    except Exception as inner_e:
+                        status = f"Error processing metric '{metric_name}': {inner_e}"
+                        error_count += 1
+                        break # Break from inner loop if a metric fails
 
-            except (sqlite3.Error, IndexError, TypeError, AttributeError) as e:
-                errors.append(f"Line {line_num}: Database or parsing error - {e}.")
-    except Exception as e:
-        errors.append(f"File-level error: Could not process the CSV file. Details: {e}")
+                if status.startswith("Error"): # If an inner error already set status
+                    pass
+                elif row_successes > 0:
+                    status = "Success"
+                    if invalid_metric_names:
+                        status += f" (Skipped invalid: {', '.join(invalid_metric_names)})"
+                elif row_duplicates > 0:
+                    status = "Duplicate"
+                else:  # This case happens if all metrics were invalid
+                    status = f"Error: All metrics for this row were invalid or skipped."
+                    error_count += 1
+
+                writer.writerow(original_row + [status])
+
+            except Exception as e: # Catch any other unexpected row-level errors
+                error_count += 1
+                writer.writerow(original_row + [f"Error: {e}"])
+
+    except Exception as e: # Catch file-level errors (e.g., CSV parsing failure, decoding)
+        error_count += 1 # Increment for the file-level error
+        # If header wasn't read, write a minimal header + error
+        if not header:
+            writer.writerow(["Error", "Details", "Import Status"])
+        writer.writerow(["File-level error", str(e), "Error"])
+        # Clear other counts as the file couldn't be processed meaningfully
+        processed_count = 0
+        duplicate_count = 0
 
     conn.commit()
-    return processed_count, duplicate_count, errors
+    return output.getvalue(), processed_count, duplicate_count, error_count
 
 
 def extract_probes_from_csv(file_stream):
