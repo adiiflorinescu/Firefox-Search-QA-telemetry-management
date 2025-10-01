@@ -852,7 +852,7 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
                 description = original_row[desc_idx].strip() if desc_idx < len(original_row) and original_row[
                     desc_idx] else None
 
-                # DEFINITIVE FIX: Handle optional expiration column
+                # Handle optional expiration column
                 expiration = None
                 if exp_idx != -1 and exp_idx < len(original_row):
                     expiration = original_row[exp_idx].strip() or 'Not defined'

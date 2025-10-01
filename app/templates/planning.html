@@ -141,7 +141,7 @@
                                 <tr>
                                     <td>{{ tc.engine or 'NoEngine' }}</td>
                                     <td>{{ tc.region or 'NoRegion' }}</td>
-                                    {# DEFINITIVE FIX: Added title attribute for hover tooltip #}
+                                    {# Added title attribute for hover tooltip #}
                                     <td><a href="{{ tc_base_url }}{{ tc.tc_id | strip_tcid_prefix }}" target="_blank" title="{{ tc.tcid_title or 'No title' }}">{{ tc.tc_id }}</a></td>
                                     <td></td>
                                 </tr>

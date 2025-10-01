@@ -73,7 +73,7 @@
             <tbody>
                 {% for item in metric_data.existing_coverage %}
                 <tr>
-                    {# DEFINITIVE FIX: Added title attribute for hover tooltip #}
+                    {#  Added title attribute for hover tooltip #}
                     <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank" title="{{ item.tcid_title or 'No title' }}">{{ item.tc_id }}</a></td>
                     <td>{{ item.tcid_title or 'N/A' }}</td>
                     <td>{{ item.region or 'N/A' }}</td>

@@ -31,7 +31,7 @@ def login():
     return render_template('auth/login.html')
 
 
-# DEFINITIVE FIX: The @bp.before_app_request function has been removed from this file
+# The @bp.before_app_request function has been removed from this file
 # and its logic was moved into the application factory in __init__.py.
 
 @bp.route('/logout')

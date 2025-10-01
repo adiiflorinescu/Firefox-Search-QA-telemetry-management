@@ -5,7 +5,6 @@
 {% block head_styles %}
     <style>
         /* Styles specific to the management page */
-        /* DEFINITIVE FIX: Removed 'details' and 'summary' styles from here */
         .form-section { padding: 1rem; border: 1px solid #eef; border-radius: 5px; background: #fdfdff; }
         .form-grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 0.5rem 1rem 1rem 1rem; }
         .form-grid-container.single-col { grid-template-columns: 1fr; }
@@ -68,7 +67,7 @@
     </div>
     {% endif %}
 
-    <details id="manage-coverage-details" open>
+    <details id="manage-coverage-details">
         <summary>Manage Coverage</summary>
         <div class="form-grid-container">
             <div class="form-section">
