@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} - Telemetry Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head_styles %}{% endblock %}
+</head>
+<body>
+
+<div class="container">
+    <nav>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('management.index') }}" {% if request.endpoint.startswith('management.') %}class="active"{% endif %}>Data Management</a>
+            <a href="{{ url_for('main.activity_log') }}" {% if request.endpoint == 'main.activity_log' %}class="active"{% endif %}>Activity Log</a>
+        {% endif %}
+        <a href="{{ url_for('main.metrics') }}" {% if request.endpoint == 'main.metrics' %}class="active"{% endif %}>View Metrics</a>
+        <a href="{{ url_for('main.reports') }}" {% if request.endpoint == 'main.reports' %}class="active"{% endif %}>Metric Reports</a>
+        <a href="{{ url_for('planning.view_planning') }}" {% if request.endpoint.startswith('planning.') %}class="active"{% endif %}>Coverage Planning</a>
+        {% if g.user and g.user.role == 'admin' %}
+            <a href="{{ url_for('user_management.index') }}" {% if request.endpoint.startswith('user_management.') %}class="active"{% endif %}>User Management</a>
+        {% endif %}
+
+        {% if g.user %}
+            <a href="{{ url_for('auth.logout') }}" style="float: right;">Logout ({{ g.user.username }})</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" style="float: right;">Login</a>
+        {% endif %}
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash-message flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</div>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

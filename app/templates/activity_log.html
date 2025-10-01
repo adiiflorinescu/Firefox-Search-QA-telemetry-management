@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+
+{% block title %}Activity Log{% endblock %}
+
+{% block head_styles %}
+    <style>
+        .filters-form {
+            background-color: #f9fafb;
+            padding: 1.5rem;
+            border: 1px solid #eef;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            align-items: end;
+        }
+        .filters-form .form-group {
+            margin: 0;
+        }
+        .filters-form .form-actions {
+            grid-column: -2 / -1; /* Place buttons in the last column on wider screens */
+            display: flex;
+            gap: 0.5rem;
+        }
+        .filters-form button, .filters-form .button-link {
+            width: 100%;
+        }
+
+        .pagination {
+            margin-top: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pagination .page-info {
+            color: #555;
+            font-size: 0.9rem;
+        }
+        .pagination .page-links a {
+            padding: 8px 12px;
+            text-decoration: none;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 0 2px;
+            color: #2c5282;
+            background-color: white;
+        }
+        .pagination .page-links a.disabled {
+            color: #aaa;
+            pointer-events: none;
+            background-color: #f9fafb;
+        }
+        .pagination .page-links a.current {
+            font-weight: bold;
+            background-color: #eef;
+            border-color: #ccc;
+        }
+        .pagination .page-links a:not(.disabled):hover {
+            background-color: #f0f5fa;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <h1>Activity Log</h1>
+
+    <form method="get" action="{{ url_for('main.activity_log') }}" class="filters-form">
+        <div class="form-group">
+            <label for="user-filter">User</label>
+            <select id="user-filter" name="user_id">
+                <option value="">All Users</option>
+                {% for user in filter_users %}
+                <option value="{{ user.user_id }}" {% if current_filters.user_id == user.user_id %}selected{% endif %}>
+                    {{ user.username }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="action-filter">Action</label>
+            <select id="action-filter" name="action">
+                <option value="">All Actions</option>
+                {% for act in filter_actions %}
+                <option value="{{ act.action }}" {% if current_filters.action == act.action %}selected{% endif %}>
+                    {{ act.action }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="start-date">Start Date</label>
+            <input type="date" id="start-date" name="start_date" value="{{ current_filters.start_date or '' }}">
+        </div>
+        <div class="form-group">
+            <label for="end-date">End Date</label>
+            <input type="date" id="end-date" name="end_date" value="{{ current_filters.end_date or '' }}">
+        </div>
+        <div class="form-group">
+            <label for="search-filter">Search</label>
+            <input type="search" id="search-filter" name="search" placeholder="User, Table, Record..." value="{{ current_filters.search or '' }}">
+        </div>
+        <div class="form-actions">
+            <button type="submit">Filter</button>
+            <a href="{{ url_for('main.activity_log') }}" class="button-link cancel-btn" style="text-align: center;">Reset</a>
+        </div>
+    </form>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">Timestamp</th>
+                <th style="width: 10%;">User</th>
+                <th style="width: 15%;">Action</th>
+                <th style="width: 15%;">Table</th>
+                <th style="width: 15%;">Record PK</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in history %}
+            <tr>
+                <td>{{ item.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ item.username }}</td>
+                <td>{{ item.action }}</td>
+                <td>{{ item.table_name or 'N/A' }}</td>
+                <td>{{ item.record_pk or 'N/A' }}</td>
+                <td>{{ item.details or 'N/A' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 2rem; color: #666;">No activity found for the selected filters.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        <div class="page-info">
+            Showing page {{ page }} of {{ total_pages }} ({{ total_items }} total items)
+        </div>
+        <div class="page-links">
+            <a href="{{ url_for('main.activity_log', page=1, **current_filters) }}" class="{{ 'disabled' if page <= 1 else '' }}">&laquo; First</a>
+            <a href="{{ url_for('main.activity_log', page=page-1, **current_filters) }}" class="{{ 'disabled' if page <= 1 else '' }}">Previous</a>
+            
+            {# Simple page number display logic #}
+            <a class="current">{{ page }}</a>
+
+            <a href="{{ url_for('main.activity_log', page=page+1, **current_filters) }}" class="{{ 'disabled' if page >= total_pages else '' }}">Next</a>
+            <a href="{{ url_for('main.activity_log', page=total_pages, **current_filters) }}" class="{{ 'disabled' if page >= total_pages else '' }}">Last &raquo;</a>
+        </div>
+    </div>
+    {% elif total_items > 0 %}
+     <div class="pagination">
+        <div class="page-info">
+            Displaying all {{ total_items }} items.
+        </div>
+    </div>
+    {% endif %}
+
+{% endblock %}

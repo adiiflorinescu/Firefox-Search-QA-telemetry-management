@@ -1,22 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Metrics - Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        /* Using the same consistent styling from index.html */
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2rem; }
-        .container { max-width: 1200px; margin: auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        h1, h2, h3 { color: #1a2b4d; }
-        h1 { border-bottom: 2px solid #eef; padding-bottom: 10px; }
-        nav { margin-bottom: 2rem; }
-        nav a { text-decoration: none; color: #2c5282; font-weight: bold; margin-right: 1.5rem; font-size: 1.2rem; }
-        nav a.active { border-bottom: 2px solid #2c5282; }
-        details { border: 1px solid #ddd; border-radius: 5px; margin-bottom: 1rem; }
-        summary { font-weight: bold; font-size: 1.2rem; padding: 1rem; cursor: pointer; background-color: #f9fafb; }
+{% extends 'base.html' %}
 
+{% block title %}View Metrics{% endblock %}
+
+{% block head_styles %}
+    <style>
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 12px; text-align: left; border: 1px solid #eef; word-wrap: break-word; vertical-align: middle; }
         th { background-color: #f2f4f8; font-size: 0.9rem; text-transform: uppercase; color: #555; }
@@ -63,25 +50,34 @@
 
         .hidden { display: none; }
 
-        .delete-btn {
+        /* DEFINITIVE FIX: Updated styles for action buttons */
+        .col-actions {
+            width: 80px; /* Increased width for two buttons */
+            text-align: center;
+            white-space: nowrap;
+        }
+        .action-btn {
+            display: inline-block;
             background: none;
             border: none;
-            font-size: 1.0rem;
+            font-size: 1.2rem; /* Increased size for better visibility */
             cursor: pointer;
-            padding: 0;
-            color: #c53030;
+            padding: 2px 6px;
             opacity: 0.6;
             transition: opacity 0.2s ease-in-out;
+            text-decoration: none;
+            vertical-align: middle;
         }
-        .delete-btn:hover {
+        .action-btn:hover {
             opacity: 1;
         }
-        .col-actions {
-            width: 0.7em;
-            text-align: center;
-            padding-left: 8px;
-            padding-right: 8px;
+        .edit-btn {
+            color: #2c5282; /* Blue for edit */
         }
+        .delete-btn {
+            color: #c53030; /* Red for delete */
+        }
+
 
         /* Styles for expandable rows */
         .details-table-container {
@@ -124,29 +120,9 @@
              background-color: #f7f9fc;
         }
     </style>
-</head>
-<body>
+{% endblock %}
 
-<div class="container">
-    <nav>
-        {% if g.user and g.user.role == 'admin' %}
-            <a href="{{ url_for('management.index') }}">Data Management</a>
-            <a href="{{ url_for('main.activity_log') }}">Activity Log</a>
-        {% endif %}
-        <a href="{{ url_for('main.metrics') }}" class="active">View Metrics</a>
-        <a href="{{ url_for('main.reports') }}">Metric Reports</a>
-        <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
-        {% if g.user and g.user.role == 'admin' %}
-            <a href="{{ url_for('user_management.index') }}">User Management</a>
-        {% endif %}
-
-        {% if g.user %}
-            <a href="{{ url_for('auth.logout') }}" style="float: right;">Logout ({{ g.user.username }})</a>
-        {% else %}
-            <a href="{{ url_for('auth.login') }}" style="float: right;">Login</a>
-        {% endif %}
-    </nav>
-
+{% block content %}
     <h1>Metrics Data</h1>
 
     <div class="search-container">
@@ -164,7 +140,8 @@
         <button id="reset-filters-btn">Reset</button>
     </div>
 
-    <details open>
+    {# DEFINITIVE FIX: Removed 'open' attribute #}
+    <details>
         <summary>Test Case Coverage ({{ coverage_count }})</summary>
         <table id="coverage-table">
             <thead>
@@ -195,7 +172,7 @@
                                         <tr class="detail-row" data-engine="{{ detail.engine or '' }}" data-region="{{ detail.region or '' }}" data-tcid="{{ detail.tc_id }}">
                                             <td>{{ detail.engine or 'NoEngine' }}</td>
                                             <td>{{ detail.region or 'NoRegion' }}</td>
-                                            <td><a href="{{ tc_base_url }}{{ detail.tc_id | strip_tcid_prefix }}" target="_blank">{{ detail.tc_id }}</a></td>
+                                            <td><a href="{{ tc_base_url }}{{ detail.tc_id | strip_tcid_prefix }}" target="_blank" title="{{ detail.tcid_title or 'No title' }}">{{ detail.tc_id }}</a></td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -212,7 +189,8 @@
         </table>
     </details>
 
-    <details open>
+    {# DEFINITIVE FIX: Removed 'open' attribute #}
+    <details>
         <summary>Glean Metrics ({{ glean_count }})</summary>
         <table id="glean-table">
             <thead>
@@ -221,7 +199,7 @@
                     <th class="col-compact">Type</th>
                     <th class="col-compact">Expire</th>
                     <th class="description-cell">Description</th>
-                    {% if g.user and g.user.role == 'admin' %}<th class="col-actions"></th>{% endif %}
+                    {% if g.user and g.user.role == 'admin' %}<th class="col-actions">Actions</th>{% endif %}
                 </tr>
             </thead>
             <tbody id="glean-body">
@@ -235,7 +213,8 @@
                     </td>
                     {% if g.user and g.user.role == 'admin' %}
                     <td class="col-actions">
-                        <button class="delete-btn" data-table="glean_metrics" data-pk="{{ metric.glean_name }}" title="Delete item">❎</button>
+                        <a href="{{ url_for('management.edit_metric', metric_type='glean', metric_name=metric.glean_name) }}" class="action-btn edit-btn" title="Edit item">✏️</a>
+                        <button class="action-btn delete-btn" data-table="glean_metrics" data-pk="{{ metric.glean_name }}" title="Delete item">🗑️</button>
                     </td>
                     {% endif %}
                 </tr>
@@ -244,7 +223,8 @@
         </table>
     </details>
 
-    <details open>
+    {# DEFINITIVE FIX: Removed 'open' attribute #}
+    <details>
         <summary>Legacy Metrics ({{ legacy_count }})</summary>
         <table id="legacy-table">
             <thead>
@@ -253,7 +233,7 @@
                     <th class="col-compact">Type</th>
                     <th class="col-compact">Expire</th>
                     <th class="description-cell">Description</th>
-                    {% if g.user and g.user.role == 'admin' %}<th class="col-actions"></th>{% endif %}
+                    {% if g.user and g.user.role == 'admin' %}<th class="col-actions">Actions</th>{% endif %}
                 </tr>
             </thead>
             <tbody id="legacy-body">
@@ -267,7 +247,8 @@
                     </td>
                     {% if g.user and g.user.role == 'admin' %}
                     <td class="col-actions">
-                        <button class="delete-btn" data-table="legacy_metrics" data-pk="{{ metric.legacy_name }}" title="Delete item">❎</button>
+                        <a href="{{ url_for('management.edit_metric', metric_type='legacy', metric_name=metric.legacy_name) }}" class="action-btn edit-btn" title="Edit item">✏️</a>
+                        <button class="action-btn delete-btn" data-table="legacy_metrics" data-pk="{{ metric.legacy_name }}" title="Delete item">🗑️</button>
                     </td>
                     {% endif %}
                 </tr>
@@ -275,8 +256,9 @@
             </tbody>
         </table>
     </details>
-</div>
+{% endblock %}
 
+{% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         function fetchSuggestions(type, datalistId) {
@@ -344,7 +326,8 @@
                 if (searchTerm !== '' && hasMatchInDetails && shouldBeVisible) {
                     detailsElement.open = true;
                 } else if (searchTerm === '' && selectedType === '') {
-                    detailsElement.open = false;
+                    // This part is no longer needed as they are closed by default
+                    // detailsElement.open = false;
                 }
             });
         }
@@ -387,6 +370,4 @@
         });
     });
 </script>
-
-</body>
-</html>
+{% endblock %}

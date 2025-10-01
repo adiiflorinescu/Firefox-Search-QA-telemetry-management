@@ -1,286 +1,339 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/routes/management.py
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, g, session, jsonify, Response, \
-    current_app
+from flask import (
+    Blueprint, flash, g, redirect, render_template, request, url_for, session,
+    make_response, current_app
+)
+from werkzeug.security import generate_password_hash
+
 from ..services import database as db
-import datetime
-import io
+from ..utils.decorators import admin_required
 import os
-import uuid  # For generating unique filenames
+import datetime
 
 bp = Blueprint('management', __name__, url_prefix='/manage')
 
 
-def require_admin_privileges():
-    """Checks for admin role before processing any request for this blueprint."""
-    if g.user is None:
-        return redirect(url_for('auth.login'))
-
-    if g.user['role'] != 'admin':
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('main.metrics'))
-
-
-bp.before_request(require_admin_privileges)
-
-
 @bp.route('/')
+@admin_required
 def index():
     """Renders the main data management page."""
-    supported_engines = db.get_supported_engines()
-    exceptions = db.get_all_exceptions()
-
-    # Use .get() to read the data without deleting it from the session.
-    import_results = session.get('import_results', None)
-
+    import_results = session.get('import_results')
     return render_template(
         'index.html',
-        supported_engines=supported_engines,
-        exceptions=exceptions,
-        show_management=session.get('show_management', False),
+        supported_engines=db.get_supported_engines(),
+        exceptions=db.get_all_exceptions(),
         import_results=import_results
     )
 
+
 @bp.route('/clear-import-results')
+@admin_required
 def clear_import_results():
-    """Clears the import results from the session via a user action."""
-    session.pop('import_results', None)
+    """Clears the import results from the session."""
+    if 'import_results' in session:
+        # Clean up the report file if it exists
+        results = session.pop('import_results')
+        if results.get('report_filename'):
+            try:
+                os.remove(os.path.join(current_app.instance_path, results['report_filename']))
+            except OSError:
+                pass  # Ignore if file doesn't exist
     return redirect(url_for('management.index'))
 
 
-# --- Single Entry and Bulk Import Routes ---
-@bp.route('/coverage/add', methods=['POST'])
-def add_coverage():
-    success, message = db.add_coverage_entry(request.form, g.user['user_id'])
-    flash(message, 'success' if success else 'error')
-    return redirect(url_for('management.index'))
+@bp.route('/download-last-report')
+@admin_required
+def download_last_report():
+    """Downloads the last generated import report."""
+    import_results = session.get('import_results')
+    if not import_results or not import_results.get('report_filename'):
+        flash('No report available for download.', 'error')
+        return redirect(url_for('management.index'))
+
+    try:
+        with open(os.path.join(current_app.instance_path, import_results['report_filename']), 'r') as f:
+            csv_content = f.read()
+    except FileNotFoundError:
+        flash('Report file not found. It may have been cleared.', 'error')
+        return redirect(url_for('management.index'))
+
+    response = make_response(csv_content)
+    response.headers["Content-Disposition"] = f"attachment; filename=import_report_{import_results['timestamp']}.csv"
+    response.headers["Content-Type"] = "text/csv"
+    return response
 
 
-@bp.route('/exceptions/add', methods=['POST'])
-def add_exception():
-    success, message = db.add_exception(request.form, g.user['user_id'])
-    flash(message, 'success' if success else 'error')
-    return redirect(url_for('management.index'))
+# --- Metric Management ---
 
-
-@bp.route('/glean/add', methods=['POST'])
+@bp.route('/add/glean', methods=['POST'])
+@admin_required
 def add_glean_metric():
+    """Handles the form submission for adding a new Glean metric."""
     success, message = db.add_single_metric('glean', request.form, g.user['user_id'])
     flash(message, 'success' if success else 'error')
     return redirect(url_for('management.index'))
 
 
-@bp.route('/legacy/add', methods=['POST'])
+@bp.route('/add/legacy', methods=['POST'])
+@admin_required
 def add_legacy_metric():
+    """Handles the form submission for adding a new Legacy metric."""
     success, message = db.add_single_metric('legacy', request.form, g.user['user_id'])
     flash(message, 'success' if success else 'error')
     return redirect(url_for('management.index'))
 
 
-def process_and_store_report(original_filename, output_csv_string, successes, duplicates, errors):
-    """Saves report to a server file and stores metadata in the session."""
-    report_dir = os.path.join(current_app.instance_path, 'reports')
-    os.makedirs(report_dir, exist_ok=True)
+@bp.route('/edit/<string:metric_type>/<path:metric_name>', methods=['GET', 'POST'])
+@admin_required
+def edit_metric(metric_type, metric_name):
+    """Displays a form to edit a metric and handles the update."""
+    if metric_type not in ['glean', 'legacy']:
+        flash('Invalid metric type specified.', 'error')
+        return redirect(url_for('main.metrics'))
 
-    report_filename = f"{uuid.uuid4()}.csv"
-    report_filepath = os.path.join(report_dir, report_filename)
+    if request.method == 'POST':
+        success, message = db.update_metric(metric_type, metric_name, request.form, g.user['user_id'])
+        flash(message, 'success' if success else 'error')
+        return redirect(url_for('main.metrics'))
 
-    try:
-        with open(report_filepath, 'w', newline='', encoding='utf-8') as f:
-            f.write(output_csv_string)
-    except IOError as e:
-        current_app.logger.error(f"Failed to write report file: {e}")
-        # If we can't write the file, we can't offer a download.
-        # Store a failure state in the session.
-        session['import_results'] = {
-            'summary': f"Import of '{original_filename}' processed, but report could not be saved.",
-            'successes': successes,
-            'duplicates': duplicates,
-            'errors': errors + 1, # Add one for the report-saving error
-            'report_filename': None,
-            'download_filename': None
-        }
-        return
+    metric = db.get_single_metric(metric_type, metric_name)
+    if not metric:
+        flash(f"Metric '{metric_name}' not found.", 'error')
+        return redirect(url_for('main.metrics'))
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    download_filename = f"{original_filename.rsplit('.', 1)[0]}_import_status_{timestamp}.csv"
-
-    session['import_results'] = {
-        'summary': f"Import of '{original_filename}' complete.",
-        'successes': successes,
-        'duplicates': duplicates,
-        'errors': errors,
-        'report_filename': report_filename,  # Store only the filename
-        'download_filename': download_filename
-    }
+    return render_template('edit_metric.html', metric=metric, metric_type=metric_type)
 
 
-@bp.route('/glean/bulk-import', methods=['POST'])
+@bp.route('/bulk-import/glean', methods=['POST'])
+@admin_required
 def bulk_import_glean():
-    file = request.files.get('file')
-    if not file or file.filename == '':
-        flash('No file selected.', 'error')
-        return redirect(url_for('management.index'))
-
-    if file.filename.endswith('.csv'):
-        file_stream = io.BytesIO(file.read())
-        output_csv_string, successes, duplicates, errors = db.bulk_import_metrics_from_csv('glean', file_stream,
-                                                                                           g.user['user_id'])
-        process_and_store_report(file.filename, output_csv_string, successes, duplicates, errors)
-    else:
-        flash('Invalid file type. Please upload a CSV file.', 'error')
-
-    return redirect(url_for('management.index'))
-
-
-@bp.route('/legacy/bulk-import', methods=['POST'])
-def bulk_import_legacy():
-    file = request.files.get('file')
-    if not file or file.filename == '':
-        flash('No file selected.', 'error')
-        return redirect(url_for('management.index'))
-
-    if file.filename.endswith('.csv'):
-        file_stream = io.BytesIO(file.read())
-        output_csv_string, successes, duplicates, errors = db.bulk_import_metrics_from_csv('legacy', file_stream,
-                                                                                           g.user['user_id'])
-        process_and_store_report(file.filename, output_csv_string, successes, duplicates, errors)
-    else:
-        flash('Invalid file type. Please upload a CSV file.', 'error')
-
-    return redirect(url_for('management.index'))
-
-
-@bp.route('/coverage/bulk-import', methods=['POST'])
-def bulk_import_coverage():
-    file = request.files.get('file')
-    if not file or file.filename == '':
-        flash('No file selected.', 'error')
-        return redirect(url_for('management.index'))
-
-    if file.filename.endswith('.csv'):
-        file_stream = io.BytesIO(file.read())
-        output_csv_string, successes, duplicates, errors = db.bulk_import_coverage_from_csv(file_stream,
-                                                                                            g.user['user_id'])
-        process_and_store_report(file.filename, output_csv_string, successes, duplicates, errors)
-    else:
-        flash('Invalid file type. Please upload a CSV file.', 'error')
-
-    return redirect(url_for('management.index'))
-
-
-@bp.route('/download-last-report')
-def download_last_report():
-    """Serves the last generated import report from a server-side file."""
-    results = session.get('import_results', None)
-    if not results or not results.get('report_filename'):
-        flash('No report available for download or session expired.', 'error')
-        return redirect(url_for('management.index'))
-
-    report_filename = results['report_filename']
-    download_filename = results.get('download_filename', 'import_report.csv')
-    report_filepath = os.path.join(current_app.instance_path, 'reports', report_filename)
-
-    if not os.path.exists(report_filepath):
-        flash('Report file not found. It may have been cleaned up.', 'error')
-        # Clear the session key to prevent repeated errors
-        session.pop('import_results', None)
-        return redirect(url_for('management.index'))
-
-    try:
-        with open(report_filepath, 'r', encoding='utf-8') as f:
-            csv_data = f.read()
-    except IOError:
-        flash('Could not read the report file.', 'error')
-        session.pop('import_results', None)
-        return redirect(url_for('management.index'))
-    finally:
-        # Clean up the file after reading it
-        if os.path.exists(report_filepath):
-            os.remove(report_filepath)
-        # DEFINITIVE FIX: Always pop the session key after a download attempt.
-        session.pop('import_results', None)
-
-    return Response(
-        csv_data,
-        mimetype="text/csv",
-        headers={"Content-disposition": f"attachment; filename={download_filename}"}
-    )
-
-
-# --- Extraction and Other Routes ---
-@bp.route('/extract-probes', methods=['POST'])
-def extract_probes():
+    """Handles the bulk import of Glean metrics from a CSV file."""
     if 'file' not in request.files:
-        flash('No file part for probe extraction.', 'error')
+        flash('No file part in the request.', 'error')
         return redirect(url_for('management.index'))
     file = request.files['file']
-    if file.filename == '' or not file.filename.endswith('.csv'):
-        flash('Please select a valid CSV file for probe extraction.', 'error')
+    if file.filename == '':
+        flash('No file selected for uploading.', 'error')
         return redirect(url_for('management.index'))
 
-    try:
-        output_csv_string = db.extract_probes_from_csv(file)
-        return Response(
-            output_csv_string,
-            mimetype="text/csv",
-            headers={"Content-disposition": "attachment; filename=extracted_probes.csv"}
-        )
-    except Exception as e:
-        flash(f"An error occurred during probe extraction: {e}", 'error')
+    if file and file.filename.endswith('.csv'):
+        report_content, successes, duplicates, errors = db.bulk_import_metrics_from_csv('glean', file.stream,
+                                                                                        g.user['user_id'])
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        report_filename = f"report_{timestamp}.csv"
+        with open(os.path.join(current_app.instance_path, report_filename), 'w', newline='', encoding='utf-8') as f:
+            f.write(report_content)
+
+        summary = f"Import complete: {successes} new metrics added, {duplicates} duplicates found, and {errors} errors encountered."
+        session['import_results'] = {
+            'summary': summary,
+            'successes': successes,
+            'duplicates': duplicates,
+            'errors': errors,
+            'report_filename': report_filename,
+            'timestamp': timestamp
+        }
+        flash(summary, 'success' if errors == 0 else 'error')
+    else:
+        flash('Invalid file type. Please upload a .csv file.', 'error')
+
+    return redirect(url_for('management.index'))
+
+
+@bp.route('/bulk-import/legacy', methods=['POST'])
+@admin_required
+def bulk_import_legacy():
+    """Handles the bulk import of Legacy metrics from a CSV file."""
+    if 'file' not in request.files:
+        flash('No file part in the request.', 'error')
+        return redirect(url_for('management.index'))
+    file = request.files['file']
+    if file.filename == '':
+        flash('No file selected for uploading.', 'error')
+        return redirect(url_for('management.index'))
+
+    if file and file.filename.endswith('.csv'):
+        report_content, successes, duplicates, errors = db.bulk_import_metrics_from_csv('legacy', file.stream,
+                                                                                        g.user['user_id'])
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        report_filename = f"report_{timestamp}.csv"
+        with open(os.path.join(current_app.instance_path, report_filename), 'w', newline='', encoding='utf-8') as f:
+            f.write(report_content)
+
+        summary = f"Import complete: {successes} new metrics added, {duplicates} duplicates found, and {errors} errors encountered."
+        session['import_results'] = {
+            'summary': summary,
+            'successes': successes,
+            'duplicates': duplicates,
+            'errors': errors,
+            'report_filename': report_filename,
+            'timestamp': timestamp
+        }
+        flash(summary, 'success' if errors == 0 else 'error')
+    else:
+        flash('Invalid file type. Please upload a .csv file.', 'error')
+
+    return redirect(url_for('management.index'))
+
+
+# --- Coverage Management ---
+
+@bp.route('/add/coverage', methods=['POST'])
+@admin_required
+def add_coverage():
+    """Handles the form submission for adding a new coverage entry."""
+    success, message = db.add_coverage_entry(request.form, g.user['user_id'])
+    flash(message, 'success' if success else 'error')
+    return redirect(url_for('management.index'))
+
+
+@bp.route('/bulk-import/coverage', methods=['POST'])
+@admin_required
+def bulk_import_coverage():
+    """Handles the bulk import of coverage data from a CSV file."""
+    if 'file' not in request.files:
+        flash('No file part in the request.', 'error')
+        return redirect(url_for('management.index'))
+    file = request.files['file']
+    if file.filename == '':
+        flash('No file selected for uploading.', 'error')
+        return redirect(url_for('management.index'))
+
+    if file and file.filename.endswith('.csv'):
+        report_content, successes, duplicates, errors = db.bulk_import_coverage_from_csv(file.stream, g.user['user_id'])
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        report_filename = f"report_{timestamp}.csv"
+        with open(os.path.join(current_app.instance_path, report_filename), 'w', newline='', encoding='utf-8') as f:
+            f.write(report_content)
+
+        summary = f"Import complete: {successes} new links created, {duplicates} duplicates found, and {errors} errors encountered."
+        session['import_results'] = {
+            'summary': summary,
+            'successes': successes,
+            'duplicates': duplicates,
+            'errors': errors,
+            'report_filename': report_filename,
+            'timestamp': timestamp
+        }
+        flash(summary, 'success' if errors == 0 else 'error')
+    else:
+        flash('Invalid file type. Please upload a .csv file.', 'error')
+
+    return redirect(url_for('management.index'))
+
+
+# --- Exception Management ---
+
+@bp.route('/add/exceptions', methods=['POST'])
+@admin_required
+def add_exception():
+    """Handles adding a new TCID to the exception list."""
+    success, message = db.add_exception(request.form, g.user['user_id'])
+    flash(message, 'success' if success else 'error')
+    return redirect(url_for('management.index'))
+
+
+@bp.route('/delete/exceptions/<int:exception_id>', methods=['POST'])
+@admin_required
+def delete_exception(exception_id):
+    """Handles soft-deleting an exception."""
+    if db.soft_delete_item('exceptions', exception_id, g.user['user_id']):
+        return {'success': True}
+    return {'success': False, 'error': 'Could not delete the exception.'}
+
+
+# --- Engine Management ---
+
+@bp.route('/add/engine', methods=['POST'])
+@admin_required
+def add_engine():
+    """Adds a new supported engine."""
+    # This is a simplified example; you might want more robust handling
+    engine_name = request.form.get('name')
+    if engine_name:
+        try:
+            conn = db.get_db()
+            conn.execute("INSERT INTO supported_engines (name) VALUES (?)", (engine_name,))
+            conn.commit()
+            db.log_edit(g.user['user_id'], 'add_engine', 'supported_engines', engine_name)
+        except conn.IntegrityError:
+            pass  # Ignore if it already exists
+    return redirect(url_for('management.index'))
+
+
+@bp.route('/delete/engine', methods=['POST'])
+@admin_required
+def delete_engine():
+    """Deletes a supported engine."""
+    engine_name = request.form.get('name')
+    if engine_name:
+        conn = db.get_db()
+        conn.execute("DELETE FROM supported_engines WHERE name = ?", (engine_name,))
+        conn.commit()
+        db.log_edit(g.user['user_id'], 'delete_engine', 'supported_engines', engine_name)
+    return redirect(url_for('management.index'))
+
+
+# --- Generic Deletion ---
+
+@bp.route('/delete/<table>/<path:pk>', methods=['POST'])
+@admin_required
+def delete_item(table, pk):
+    """Handles soft-deleting a generic item from various tables."""
+    if db.soft_delete_item(table, pk, g.user['user_id']):
+        return {'success': True}
+    return {'success': False, 'error': f'Could not delete the item from {table}.'}
+
+
+# --- Extraction Tools ---
+
+@bp.route('/extract-probes', methods=['POST'])
+@admin_required
+def extract_probes():
+    """Extracts probes from a TestRail CSV export."""
+    if 'file' not in request.files or not request.files['file'].filename:
+        flash('No file provided for probe extraction.', 'error')
+        return redirect(url_for('management.index'))
+
+    file = request.files['file']
+    if file and file.filename.endswith('.csv'):
+        csv_output = db.extract_probes_from_csv(file.stream)
+        if not csv_output:
+            flash('Could not process the file. It might be empty or malformed.', 'error')
+            return redirect(url_for('management.index'))
+
+        response = make_response(csv_output)
+        response.headers["Content-Disposition"] = "attachment; filename=extracted_probes.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+    else:
+        flash('Invalid file type. Please upload a .csv file.', 'error')
         return redirect(url_for('management.index'))
 
 
 @bp.route('/extract-from-rotation', methods=['POST'])
+@admin_required
 def extract_from_rotation():
-    if 'file' not in request.files:
-        flash('No file part for rotation extraction.', 'error')
+    """Extracts coverage data from a rotation CSV."""
+    if 'file' not in request.files or not request.files['file'].filename:
+        flash('No file provided for rotation extraction.', 'error')
         return redirect(url_for('management.index'))
+
     file = request.files['file']
-    if file.filename == '' or not file.filename.endswith('.csv'):
-        flash('Please select a valid CSV file for rotation extraction.', 'error')
-        return redirect(url_for('management.index'))
-
-    try:
-        output_csv_string = db.extract_from_rotation_csv(file)
-
-        if not output_csv_string:
-            flash('Processing failed. The file might be empty or in the wrong format.', 'error')
+    if file and file.filename.endswith('.csv'):
+        csv_output = db.extract_from_rotation_csv(file.stream)
+        if not csv_output:
+            flash('Could not process the file. It might be empty or malformed.', 'error')
             return redirect(url_for('management.index'))
 
-        return Response(
-            output_csv_string,
-            mimetype="text/csv",
-            headers={"Content-disposition": "attachment; filename=rotation_extraction_output.csv"}
-        )
-    except Exception as e:
-        flash(f"An error occurred during rotation extraction: {e}", 'error')
+        response = make_response(csv_output)
+        response.headers["Content-Disposition"] = "attachment; filename=extracted_rotation_coverage.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+    else:
+        flash('Invalid file type. Please upload a .csv file.', 'error')
         return redirect(url_for('management.index'))
-
-
-@bp.route('/engines/add', methods=['POST'])
-def add_engine():
-    engine_name = request.form.get('name', '').strip().lower()
-    if not engine_name:
-        return jsonify({'success': False, 'error': 'Engine name cannot be empty.'}), 400
-    # This function doesn't exist in the provided db file, assuming it would be added
-    # success, message = db.add_engine(engine_name, g.user['user_id'])
-    # For now, just return success
-    return jsonify({'success': True, 'name': engine_name})
-
-
-@bp.route('/engines/delete', methods=['POST'])
-def delete_engine():
-    engine_name = request.form.get('name')
-    if not engine_name:
-        return jsonify({'success': False, 'error': 'Engine name not provided.'}), 400
-    # This function doesn't exist in the provided db file, assuming it would be added
-    # success, message = db.delete_engine(engine_name, g.user['user_id'])
-    # For now, just return success
-    return jsonify({'success': True})
-
-
-@bp.route('/delete/<string:table_name>/<string:pk>', methods=['POST'])
-def soft_delete(table_name, pk):
-    success = db.soft_delete_item(table_name, pk, g.user['user_id'])
-    return jsonify({'success': success})

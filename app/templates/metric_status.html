@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
     <title>Status for {{ metric_data.details[metric_data.type.lower() ~ '_name'] }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
@@ -41,7 +40,6 @@
         <a href="{{ url_for('planning.view_planning') }}">Coverage Planning</a>
     </nav>
 
-    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
     <h1>Metric Status: {{ metric_data.details[metric_data.type.lower() ~ '_name'] }}</h1>
 
     <div class="details-grid">
@@ -61,7 +59,6 @@
         </dl>
     </div>
 
-    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
     <h2 class="section-title">Existing Coverage ({{ metric_data.existing_coverage|length }})</h2>
     {% if metric_data.existing_coverage %}
         <table>
@@ -76,7 +73,8 @@
             <tbody>
                 {% for item in metric_data.existing_coverage %}
                 <tr>
-                    <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank">{{ item.tc_id }}</a></td>
+                    {# DEFINITIVE FIX: Added title attribute for hover tooltip #}
+                    <td><a href="{{ tc_base_url }}{{ item.tc_id | strip_tcid_prefix }}" target="_blank" title="{{ item.tcid_title or 'No title' }}">{{ item.tc_id }}</a></td>
                     <td>{{ item.tcid_title or 'N/A' }}</td>
                     <td>{{ item.region or 'N/A' }}</td>
                     <td>{{ item.engine or 'N/A' }}</td>
@@ -88,7 +86,6 @@
         <p>No existing test case coverage found for this metric.</p>
     {% endif %}
 
-    {# DEFINITIVE FIX: Use 'metric_data' instead of 'metric' #}
     <h2 class="section-title">Planned Coverage ({{ metric_data.planned_coverage|length }})</h2>
     {% if metric_data.planned_coverage %}
         <table>

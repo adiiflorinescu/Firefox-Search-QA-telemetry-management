@@ -152,3 +152,7 @@ AFTER UPDATE ON planning FOR EACH ROW
 BEGIN
     UPDATE planning SET updated_at = datetime('now') WHERE planning_id = OLD.planning_id;
 END;
+
+-- At the end of migrations/v1.sql
+PRAGMA user_version = 1;
+    

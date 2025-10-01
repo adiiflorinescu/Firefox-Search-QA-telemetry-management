@@ -1,27 +1,21 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/commands.py
 
 import click
-import os
-from .db import get_db
+from .db_migrations import run_migrations # Import the new migration runner
 
-
-def init_db():
-    """Clear existing data and create new tables."""
-    # Import current_app here, only when the function is actually called.
-    from flask import current_app
-
-    db = get_db()
-    # Use current_app.root_path to reliably find the schema.sql file
-    schema_path = os.path.join(current_app.root_path, '..', 'schema.sql')
-    with open(schema_path, 'r', encoding='utf-8') as f:
-        db.executescript(f.read())
-
+# The old init_db function is no longer needed, as run_migrations handles it.
 
 @click.command('init-db')
 def init_db_command():
-    """Clear existing data and create new tables."""
-    init_db()
-    click.echo('Initialized the database.')
+    """
+    Initializes or migrates the database to the latest version.
+    This is safe to run multiple times.
+    """
+    try:
+        run_migrations()
+        click.echo('Database is up to date.')
+    except Exception as e:
+        click.echo(f'An error occurred during migration: {e}', err=True)
 
 
 def register_commands(app):

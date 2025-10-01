@@ -15,8 +15,9 @@ def get_db():
             detect_types=sqlite3.PARSE_DECLTYPES
         )
         g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON;")
+
     return g.db
+
 
 def close_db(e=None):
     """
@@ -24,10 +25,14 @@ def close_db(e=None):
     connection.
     """
     db = g.pop('db', None)
+
     if db is not None:
         db.close()
 
+
 def init_app(app):
-    """Register database functions with the Flask app."""
-    # This tells Flask to call close_db when cleaning up after returning a response.
+    """
+    Register database functions with the Flask app. This is called by
+    the application factory.
+    """
     app.teardown_appcontext(close_db)

@@ -1,25 +1,23 @@
 # C:/Users/Adi/PycharmProjects/R-W-TCS/pythonProject/app/__init__.py
 
 import os
-from flask import Flask, redirect, url_for, g
+from flask import Flask, g, session
 
-def create_app():
+def create_app(test_config=None):
     """Create and configure an instance of the Flask application."""
-    app = Flask(__name__,
-                instance_relative_config=True,
-                template_folder=os.path.join(os.path.abspath(os.path.dirname(__file__)), '../templates'),
-                static_folder=os.path.join(os.path.abspath(os.path.dirname(__file__)), '../static'))
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_mapping(
+        SECRET_KEY='dev',  # Change this for production
+        DATABASE=os.path.join(app.instance_path, 'app.sqlite'),
+        TC_BASE_URL="http://testrail.example.com/index.php?/cases/view/C"
+    )
 
-    # --- Load Configuration ---
-    # Load default config from the object
-    app.config.from_object('config')
-    # Load optional config from the instance folder
-    app.config.from_pyfile('config.py', silent=True)
-
-    # Environment variables from .env/.flaskenv are now loaded automatically by Flask.
-    # We just need to pull them from os.environ into the app.config.
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-default-secret-key-for-dev-only')
-    app.config['DATABASE'] = os.path.join(app.instance_path, 'metrics.db')
+    if test_config is None:
+        # Load the instance config, if it exists, when not testing
+        app.config.from_pyfile('config.py', silent=True)
+    else:
+        # Load the test config if passed in
+        app.config.update(test_config)
 
     # Ensure the instance folder exists
     try:
@@ -27,45 +25,57 @@ def create_app():
     except OSError:
         pass
 
-    # Initialize database functions (get_db, close_db)
+    # Move imports inside the factory function to avoid circular dependencies.
     from . import db
-    db.init_app(app)
-
-    # Initialize CLI commands (init-db)
+    from .db_migrations import run_migrations
+    from .routes import auth, main, planning, user_management, management
     from . import commands
+    from .services import database as db_service
+
+    # Initialize the database and run migrations within the app context
+    with app.app_context():
+        db.init_app(app)
+        run_migrations()
+
+    # Register blueprints and commands
     commands.register_commands(app)
-
-    # --- Register Blueprints (Routes) ---
-    # This order is correct to resolve dependencies.
-    from .routes import main
-    app.register_blueprint(main.bp)
-
-    from .routes import auth
     app.register_blueprint(auth.bp)
-
-    from .routes import planning
+    app.register_blueprint(main.bp)
     app.register_blueprint(planning.bp)
-
-    from .routes import management
+    app.register_blueprint(user_management.bp)
     app.register_blueprint(management.bp)
 
-    from .routes import user_management
-    app.register_blueprint(user_management.bp)
+    # Make sure the main blueprint's 'metrics' view is available at the root
+    app.add_url_rule('/', endpoint='main.metrics')
+
+    # DEFINITIVE FIX: Update the filter to use index access instead of .get()
+    def sort_details_filter(details):
+        """
+        Sorts coverage details by engine, then region, then TC ID.
+        This works for both dicts and sqlite3.Row objects.
+        """
+        return sorted(
+            details,
+            key=lambda d: (
+                d['engine'] or '',
+                d['region'] or '',
+                d['tc_id'] or ''
+            )
+        )
+
+    # Register the filters with the Jinja environment
+    app.jinja_env.filters['sort_details'] = sort_details_filter
+    app.jinja_env.filters['strip_tcid_prefix'] = db_service._strip_tcid_prefix
 
 
-    # Add a default route to redirect to login or metrics
-    @app.route('/')
-    def index_route():
-        if g.user:
-            return redirect(url_for('main.metrics'))
-        return redirect(url_for('auth.login'))
-
-    # --- Register Custom Template Filters ---
-    try:
-        from .utils.template_filters import strip_tcid_prefix, sort_details
-        app.jinja_env.filters['strip_tcid_prefix'] = strip_tcid_prefix
-        app.jinja_env.filters['sort_details'] = sort_details
-    except ImportError:
-        pass
+    @app.before_request
+    def load_logged_in_user():
+        """If a user id is in the session, load the user object from the database into g.user."""
+        user_id = session.get('user_id')
+        if user_id is None:
+            g.user = None
+        else:
+            # Use the correct service module to get the user
+            g.user = db_service.get_user_by_id(user_id)
 
     return app

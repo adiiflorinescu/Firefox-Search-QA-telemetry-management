@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Metric{% endblock %}
+
+{% block head_styles %}
+<style>
+    .edit-form-container {
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background-color: #fdfdff;
+        border: 1px solid #eef;
+        border-radius: 8px;
+    }
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    .form-group-disabled {
+        margin-bottom: 1.5rem;
+    }
+    .form-group-disabled label {
+        font-weight: 600;
+        color: #555;
+    }
+    .form-group-disabled .metric-name {
+        background-color: #f2f4f8;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        color: #333;
+        word-break: break-all;
+    }
+    .form-actions {
+        margin-top: 2rem;
+        display: flex;
+        gap: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="edit-form-container">
+        <h1>Edit {{ metric_type|capitalize }} Metric</h1>
+
+        <form method="post">
+            <div class="form-group-disabled">
+                <label>Metric Name (Cannot be changed)</label>
+                <div class="metric-name">{{ metric[metric_type ~ '_name'] }}</div>
+            </div>
+
+            <div class="form-group">
+                <label for="metric_type">Specific Type (e.g., timing, string, count)</label>
+                <input type="text" id="metric_type" name="metric_type" value="{{ metric.metric_type or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="expiration">Expiration</label>
+                <input type="text" id="expiration" name="expiration" value="{{ metric.expiration or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" rows="5">{{ metric.description or '' }}</textarea>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit">Save Changes</button>
+                <a href="{{ url_for('main.metrics') }}" class="button-link cancel-btn">Cancel</a>
+            </div>
+        </form>
+    </div>
+{% endblock %}

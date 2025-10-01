@@ -103,6 +103,7 @@ input[type="email"],
 input[type="password"],
 input[type="file"],
 input[type="search"],
+input[type="date"],
 textarea,
 select {
     width: 100%;
@@ -162,4 +163,25 @@ button:hover, .button-link:hover {
 
 .flash-error {
     background-color: #c53030;
+}
+
+/* --- DEFINITIVE FIX: Collapsible Sections --- */
+details {
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 1rem;
+    background-color: #fff; /* Add background to prevent seeing through */
+}
+
+summary {
+    font-weight: bold;
+    font-size: 1.2rem;
+    padding: 1rem;
+    cursor: pointer;
+    background-color: #f9fafb;
+    list-style: revert; /* Show the default triangle marker */
+}
+
+details[open] > summary {
+    border-bottom: 1px solid #ddd;
 }
