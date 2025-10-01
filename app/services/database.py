@@ -808,21 +808,8 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
         content = file_stream.read().decode('utf-8-sig')
         content_stream = io.StringIO(content)
         reader = csv.reader(content_stream)
-        header = [h.lower() for h in next(reader, [])]
+        header = next(reader, []) # Read the header but we won't use it for indexing
         writer.writerow(header + ["Import Status"])
-
-        # Find column indices, case-insensitively
-        try:
-            name_idx = header.index('name')
-            type_idx = header.index('type')
-            desc_idx = header.index('description')
-            exp_idx = header.index('expiration')
-        except ValueError:
-            # Handle case where a required column is missing or optional one isn't there
-            exp_idx = -1  # Sentinel for not found
-            # Re-check for required columns to give a better error
-            if 'name' not in header:
-                raise ValueError("Required column 'Name' is missing from the CSV.")
 
         metric_name_extract_regex = re.compile(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+")
 
@@ -836,7 +823,8 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
                     writer.writerow(original_row + [status])
                     continue
 
-                metric_names_str = original_row[name_idx]
+                # Use column position instead of name
+                metric_names_str = original_row[0]
                 potential_metric_strings = [name.strip() for name in metric_names_str.split(',') if name.strip()]
                 metric_names = [match.group(0) for s in potential_metric_strings if
                                 (match := metric_name_extract_regex.match(s))]
@@ -847,15 +835,14 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
                     writer.writerow(original_row + [status])
                     continue
 
-                metric_cat = original_row[type_idx].strip() if type_idx < len(original_row) and original_row[
-                    type_idx] else None
-                description = original_row[desc_idx].strip() if desc_idx < len(original_row) and original_row[
-                    desc_idx] else None
-
-                # Handle optional expiration column
+                # Column 2: Type
+                metric_cat = original_row[1].strip() if len(original_row) > 1 and original_row[1] else None
+                # Column 3: Description
+                description = original_row[2].strip() if len(original_row) > 2 and original_row[2] else None
+                # Column 4: Expiration (Optional)
                 expiration = None
-                if exp_idx != -1 and exp_idx < len(original_row):
-                    expiration = original_row[exp_idx].strip() or 'Not defined'
+                if len(original_row) > 3 and original_row[3]:
+                    expiration = original_row[3].strip() or 'Not defined'
 
                 row_successes = 0
                 row_duplicates = 0
@@ -889,6 +876,10 @@ def bulk_import_metrics_from_csv(metric_type, file_stream, user_id):
                 else:
                     status = "Error: No metrics processed for this row."
                     error_count += 1
+                writer.writerow(original_row + [status])
+            except IndexError:
+                status = "Error: Row has fewer columns than expected."
+                error_count += 1
                 writer.writerow(original_row + [status])
             except Exception as e:
                 error_count += 1
