@@ -1037,7 +1037,8 @@ def extract_probes_from_csv(file_stream):
     engine_names = [re.escape(engine['name']) for engine in db_engines]
 
     probe_regex = re.compile(r'([a-zA-Z0-9\._-]+(\.glean|\.telemetry)[a-zA-Z0-9\._-]+)')
-    region_regex = re.compile(r'\b(US|DE|JP|FR|GB|IT|ES|CA|IN)\b', re.IGNORECASE)
+    # DEFINITIVE FIX: Added 'TO' and made the regex case-sensitive by removing re.IGNORECASE
+    region_regex = re.compile(r'\b(US|DE|JP|FR|GB|IT|ES|CA|IN|TO)\b')
     engine_regex = re.compile(r'\b(' + '|'.join(engine_names) + r')\b', re.IGNORECASE) if engine_names else None
 
     valid_metric_regex = re.compile(r"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$")
@@ -1083,7 +1084,8 @@ def extract_from_rotation_csv(file_stream):
     """
     db_engines = get_supported_engines()
     engine_names = [re.escape(engine['name']) for engine in db_engines]
-    region_regex = re.compile(r'\b(US|DE|JP|FR|GB|IT|ES|CA|IN)\b', re.IGNORECASE)
+    # DEFINITIVE FIX: Added 'TO' and made the regex case-sensitive by removing re.IGNORECASE
+    region_regex = re.compile(r'\b(US|DE|JP|FR|GB|IT|ES|CA|IN|TO)\b')
     engine_regex = re.compile(r'\b(' + '|'.join(engine_names) + r')\b', re.IGNORECASE) if engine_names else None
 
     valid_metric_regex = re.compile(r"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$")
