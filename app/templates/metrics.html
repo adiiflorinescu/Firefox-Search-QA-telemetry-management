@@ -354,11 +354,11 @@
                 const shouldBeVisible = matchesSearch && matchesType;
                 row.classList.toggle('hidden', !shouldBeVisible);
 
+                // DEFINITIVE FIX: Added an else block to explicitly close details
                 if (searchTerm !== '' && hasMatchInDetails && shouldBeVisible) {
                     detailsElement.open = true;
-                } else if (searchTerm === '' && selectedType === '') {
-                    // This part is no longer needed as they are closed by default
-                    // detailsElement.open = false;
+                } else {
+                    detailsElement.open = false;
                 }
             });
         }
