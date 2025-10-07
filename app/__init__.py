@@ -3,18 +3,19 @@
 import os
 from flask import Flask, g, session
 
+
 def create_app(test_config=None):
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__, instance_relative_config=True)
+
+    # Set default configuration
     app.config.from_mapping(
         SECRET_KEY='dev',  # Change this for production
-        DATABASE=os.path.join(app.instance_path, 'app.sqlite'),
-        TC_BASE_URL="http://testrail.example.com/index.php?/cases/view/C"
+        DATABASE=os.path.join(app.instance_path, 'app.sqlite')
     )
 
     if test_config is None:
-        # Load the instance config, if it exists, when not testing
-        app.config.from_pyfile('config.py', silent=True)
+        app.config.from_object('config')
     else:
         # Load the test config if passed in
         app.config.update(test_config)
@@ -48,7 +49,6 @@ def create_app(test_config=None):
     # Make sure the main blueprint's 'metrics' view is available at the root
     app.add_url_rule('/', endpoint='main.metrics')
 
-    # DEFINITIVE FIX: Update the filter to use index access instead of .get()
     def sort_details_filter(details):
         """
         Sorts coverage details by engine, then region, then TC ID.
@@ -66,7 +66,6 @@ def create_app(test_config=None):
     # Register the filters with the Jinja environment
     app.jinja_env.filters['sort_details'] = sort_details_filter
     app.jinja_env.filters['strip_tcid_prefix'] = db_service._strip_tcid_prefix
-
 
     @app.before_request
     def load_logged_in_user():
