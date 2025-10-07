@@ -97,6 +97,9 @@
             background-color: transparent;
             padding: 12px;
             position: relative;
+            display: flex; /* Use flexbox for alignment */
+            align-items: center; /* Vertically center items */
+            gap: 0.75rem; /* Space between badge and text */
         }
         #coverage-table summary::-webkit-details-marker {
             display: none;
@@ -118,6 +121,26 @@
         }
         #coverage-table #coverage-body > tr:hover {
              background-color: #f7f9fc;
+        }
+
+        /* DEFINITIVE FIX: Styles for the new metric type badge */
+        .metric-type-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.6em;
+            height: 1.6em;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            font-size: 0.8rem;
+            flex-shrink: 0; /* Prevent badge from shrinking */
+        }
+        .badge-glean {
+            background-color: #2c5282; /* Blue for Glean */
+        }
+        .badge-legacy {
+            background-color: #9b2c2c; /* Dark red for Legacy */
         }
     </style>
 {% endblock %}
@@ -157,7 +180,15 @@
                 <tr class="metric-row" data-metric-name="{{ item.metric_name }}" data-metric-type="{{ item.metric_type }}">
                     <td>
                         <details>
-                            <summary>{{ item.metric_name }}</summary>
+                            <summary>
+                                {# DEFINITIVE FIX: Added the metric type badge #}
+                                {% if item.metric_type == 'Glean' %}
+                                    <span class="metric-type-badge badge-glean" title="Glean">G</span>
+                                {% elif item.metric_type == 'Legacy' %}
+                                    <span class="metric-type-badge badge-legacy" title="Legacy">L</span>
+                                {% endif %}
+                                {{ item.metric_name }}
+                            </summary>
                             <div class="details-table-container">
                                 <table class="details-table">
                                     <thead>
